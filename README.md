@@ -6,6 +6,10 @@
 
 > **Model Context Protocol server** that lets your AI assistant create and edit BuildShip **custom nodes** and **workflows** directly in your repository.
 
+> **GitHub Integration Required** — This MCP server works with BuildShip's GitHub-connected repository. Before using it, make sure **GitHub Integration is active** in your BuildShip project Settings. If you see a screen like the one below, click **"Talk to us"** to enable it on your plan.
+> 
+> ![BuildShip GitHub Integration settings screen showing "Version control, CI/CD pipeline and automated deployments" with a "Talk to us" button](docs/github-integration-required.png)
+
 ## What it does
 
 This MCP server exposes BuildShip repo operations as AI-callable tools. Your AI agent can:
