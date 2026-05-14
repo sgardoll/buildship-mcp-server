@@ -112,6 +112,19 @@ const TOOLS: ToolDef[] = [
 ];
 
 async function main() {
+  // `--check` resolves the repo root, prints it, and exits — for sanity-testing
+  // an install without launching a client.
+  if (process.argv.includes("--check")) {
+    try {
+      const root = await resolveRepoRoot();
+      process.stdout.write(`BuildShip repo: ${root}\n`);
+      process.exit(0);
+    } catch (err) {
+      process.stderr.write(`[buildship-mcp] ${(err as Error).message}\n`);
+      process.exit(1);
+    }
+  }
+
   // Eagerly resolve the repo root so we fail fast with a clear error if it's missing.
   await resolveRepoRoot().catch((err: Error) => {
     process.stderr.write(`[buildship-mcp] ${err.message}\n`);
