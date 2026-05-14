@@ -85,19 +85,29 @@ For other tools (Claude Desktop, Cursor, Zed, VS Code, Continue, OpenCode, Cline
 
 ---
 
-## Compatible With
+## One-Click Install
 
-These badges link to the install instructions for each tool, **not** auto-installers — they exist because no universal "click to install" protocol works across all clients. Tools that **do** have install deep-links (Cursor, VS Code) get a live link in their own section below.
+After you've cloned + built the server (Quick Start steps 1–3 above), click your client's button. It opens an install dialog pre-filled with the BuildShip MCP config — you just edit the two placeholder paths.
 
-[![Claude Code](https://img.shields.io/badge/Claude%20Code-Compatible-D97757?style=for-the-badge)](#claude-code-cli)
-[![Claude Desktop](https://img.shields.io/badge/Claude%20Desktop-Compatible-D97757?style=for-the-badge)](#claude-desktop)
-[![Cursor](https://img.shields.io/badge/Cursor-Compatible-000000?style=for-the-badge)](#cursor)
-[![VS Code](https://img.shields.io/badge/VS%20Code-Compatible-007ACC?style=for-the-badge)](#vs-code)
-[![Zed](https://img.shields.io/badge/Zed-Compatible-084CCF?style=for-the-badge)](#zed)
-[![Continue](https://img.shields.io/badge/Continue-Compatible-7B7BFF?style=for-the-badge)](#continue-dev)
-[![OpenCode](https://img.shields.io/badge/OpenCode-Compatible-1F1F1F?style=for-the-badge)](#opencode)
-[![Cline](https://img.shields.io/badge/Cline-Compatible-FF6B6B?style=for-the-badge)](#cline--roo-code)
-[![Windsurf](https://img.shields.io/badge/Windsurf-Compatible-0FCFA6?style=for-the-badge)](#windsurf)
+[![Install in Cursor](https://img.shields.io/badge/Install%20in-Cursor-000000?style=for-the-badge&logo=cursor&logoColor=white)](cursor://anysphere.cursor-deeplink/mcp/install?name=buildship&config=eyJjb21tYW5kIjoibm9kZSIsImFyZ3MiOlsiL0FCU09MVVRFL1BBVEgvVE8vYnVpbGRzaGlwLW1jcC1zZXJ2ZXIvZGlzdC9pbmRleC5qcyJdLCJlbnYiOnsiQlVJTERTSElQX1JFUE8iOiIvQUJTT0xVVEUvUEFUSC9UTy95b3VyLWJ1aWxkc2hpcC1yZXBvIn19)
+[![Install in VS Code](https://img.shields.io/badge/Install%20in-VS%20Code-007ACC?style=for-the-badge&logo=visualstudiocode&logoColor=white)](vscode:mcp/install?%7B%22name%22%3A%22buildship%22%2C%22command%22%3A%22node%22%2C%22args%22%3A%5B%22%2FABSOLUTE%2FPATH%2FTO%2Fbuildship-mcp-server%2Fdist%2Findex.js%22%5D%2C%22env%22%3A%7B%22BUILDSHIP_REPO%22%3A%22%2FABSOLUTE%2FPATH%2FTO%2Fyour-buildship-repo%22%7D%7D)
+[![Install in VS Code Insiders](https://img.shields.io/badge/Install%20in-VS%20Code%20Insiders-1F9CF0?style=for-the-badge&logo=visualstudiocode&logoColor=white)](vscode-insiders:mcp/install?%7B%22name%22%3A%22buildship%22%2C%22command%22%3A%22node%22%2C%22args%22%3A%5B%22%2FABSOLUTE%2FPATH%2FTO%2Fbuildship-mcp-server%2Fdist%2Findex.js%22%5D%2C%22env%22%3A%7B%22BUILDSHIP_REPO%22%3A%22%2FABSOLUTE%2FPATH%2FTO%2Fyour-buildship-repo%22%7D%7D)
+
+> These three are the **only** MCP clients (as of 2026) that publish a config-bearing deep-link protocol. If the button does nothing, your OS doesn't have a handler registered for the URL scheme — use the manual snippet in the per-tool section below.
+
+### Other clients — jump to manual setup
+
+No deep-link protocol exists for these yet, so installation is a one-time JSON snippet paste. Each section below has the exact text to copy:
+
+[![Claude Code](https://img.shields.io/badge/Claude%20Code-Manual%20setup-D97757?style=for-the-badge)](#claude-code-cli)
+[![Claude Desktop](https://img.shields.io/badge/Claude%20Desktop-Manual%20setup-D97757?style=for-the-badge)](#claude-desktop)
+[![Zed](https://img.shields.io/badge/Zed-Manual%20setup-084CCF?style=for-the-badge)](#zed)
+[![Continue](https://img.shields.io/badge/Continue-Manual%20setup-7B7BFF?style=for-the-badge)](#continuedev)
+[![OpenCode](https://img.shields.io/badge/OpenCode-Manual%20setup-1F1F1F?style=for-the-badge)](#opencode)
+[![Cline](https://img.shields.io/badge/Cline-Manual%20setup-FF6B6B?style=for-the-badge)](#cline--roo-code)
+[![Windsurf](https://img.shields.io/badge/Windsurf-Manual%20setup-0FCFA6?style=for-the-badge)](#windsurf)
+
+> *Claude Code is "manual" only in the sense that there's no URL-scheme one-click — but its `claude mcp add` CLI is effectively one command.*
 
 ---
 
