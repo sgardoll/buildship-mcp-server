@@ -15,7 +15,7 @@ const SLUG_RE = /^[a-z0-9][a-z0-9-]*$/;
 const SEMVER_RE = /^\d+\.\d+\.\d+$/;
 
 const DEFAULT_ICON_URL =
-  "https://firebasestorage.googleapis.com/v0/b/website-a1s39m.appspot.com/o/buildship-app-logos%2Fbuildship.png?alt=media";
+  "https://framerusercontent.com/images/kcxXJqIDlUecsc85vAP6hZM4.png";
 
 const DEFAULT_MAIN_TS = `export default async function (
   { name }: NodeInputs,

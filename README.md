@@ -8,7 +8,28 @@ workflows/<folder>/{schema,meta,nodes,inputs,output,triggers}.json
 flow-id-to-label/<id>.txt
 ```
 
-The server enforces the conventions documented in [`AGENTS.md`](https://github.com/sgardoll/buildship/blob/main/AGENTS.md): every new node ships the five required files, every new workflow ships the six required files plus a `flow-id-to-label/<workflowId>.txt` entry, and existing files are validated as JSON before they are overwritten.
+The server enforces the following conventions derived from the BuildShip repository layout:
+
+**Custom nodes** — each version lives under `nodes/<id>/<version>/` and must contain these five files:
+- `schema.json` — id, label, description, type, version, dependencies, icon metadata
+- `inputs.json` — parameter definitions visible in the BuildShip UI
+- `output.json` — return value schema consumed by downstream nodes
+- `meta.json` — metadata (e.g. `gitIntegrationVersion`)
+- `main.ts` — the executable TypeScript entrypoint (default export async function)
+
+> **Convention rules:** Do not rename or remove input/output property keys once published — existing workflows reference them by name. Keep the `export default async function` signature. If you add new optional inputs or outputs you must update `inputs.json` / `output.json` to match. Node IDs must be lowercase kebab-case.
+
+**Workflows** — each workflow lives under `workflows/<folder>/` and must contain these six files:
+- `schema.json` — id, name, description, runtime version, node values, variables
+- `meta.json` — git integration version, node ID-to-label mapping
+- `nodes.json` — ordered array of node entries (each with id, type, label, and optional library ref / version)
+- `inputs.json` — workflow-level input parameters
+- `output.json` — workflow-level output schema
+- `triggers.json` — how the workflow is initiated (REST endpoint, cron, etc.)
+
+Plus a `flow-id-to-label/<workflowId>.txt` file mapping the workflow's UUID to a human-readable label. Failure to keep this file in sync results in missing labels in deployment logs.
+
+> **Convention rules:** Node `id` fields inside `nodes.json` are referenced for execution wiring — never change them. When upgrading a node version in a workflow, verify that inputs/outputs are compatible. Do not change trigger types (e.g. request → scheduler) without re-architecting the data flow.
 
 ## Setup
 
@@ -47,6 +68,33 @@ Add this server to `.mcp.json` (project-scoped) or `~/.claude.json` (user-scoped
 ```
 
 Then `/mcp` inside Claude Code should list `buildship` with the tools below.
+
+## Git remote setup
+
+This repo was originally hosted under a personal account. Before pushing any changes, point it to your own remote:
+
+```bash
+# 1. Check the current remote
+git remote -v
+
+# 2. Replace with your own repository
+git remote set-url origin https://github.com/YOUR_ORG/YOUR_REPO.git
+
+# 3. Verify
+git remote -v
+```
+
+You can also run the included helper to configure interactively:
+
+```bash
+npm run init-remote
+```
+
+Or skip interactive prompts by passing the URL as an environment variable:
+
+```bash
+BUILDSHIP_GIT_REMOTE=https://github.com/my-org/buildship-components.git npm run init-remote
+```
 
 ## Tools
 

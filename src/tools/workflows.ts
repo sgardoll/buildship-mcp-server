@@ -23,7 +23,7 @@ function shortSuffix(): string {
   return out;
 }
 
-function workflowIdFromName(name: string): string {
+function generateWorkflowId(): string {
   // Generates a 20-char id similar to the existing repo (e.g. `HceqKhqYlr6X0RXBOmLH`).
   const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
   let out = "";
@@ -125,7 +125,7 @@ export async function createWorkflow(raw: unknown) {
   const input = CreateWorkflowSchema.parse(raw);
   const slug = slugify(input.name);
   const folder = input.folderName ?? `${slug}-${shortSuffix()}`;
-  const wfId = input.workflowId ?? workflowIdFromName(input.name);
+  const wfId = input.workflowId ?? generateWorkflowId();
 
   const root = await workflowsDir();
   const dir = path.join(root, folder);
