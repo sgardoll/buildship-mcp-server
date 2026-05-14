@@ -1,138 +1,178 @@
 # BuildShip MCP Server
 
-[![MCP stdio](https://img.shields.io/badge/MCP-stdio-blue?logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgd2lkdGg9IjI0IiBoZWlnaHQ9IjI0IiBmaWxsPSJjdXJyZW50Q29sb3IiPjxwYXRoIGQ9Ik0xMiAyQzYuNDggMiAyIDYuNDggMiAxMnM0LjQ4IDEwIDEwIDEwIDEwLTQuNDggMTAtMTBTMTcuNTIgMiAxMiAyem0tMSAxNy45M2MtMy45NS0uNDktNy0zLjg1LTctNy45MyAwLS42Mi4wOC0xLjIxLjIxLTEuNzlMOSAxNXYxYy41NSAwIDEgLjQ1IDEgMXY0Ljkzek0xNyAxM2MtLjU1IDAtMS0uNDUtMS0xdi0xLjczbC0zLjEzLTMuMTNjLS4zNi0uMzYtLjg2LS41OC0xLjQxLS41OC0uNTUgMC0xLjA1LjIxLTEuNDEuNTlMNy4xNCAxMC41OWMtLjM2LjM2LS41OS44Ni0uNTkgMS40MSAwIC41NS4yMiAxLjA1LjU5IDEuNDFsMy4xMyAzLjEzaC0uMTVWMjBjLS41NSAwLTEgLjQ1LTEgMXYtNVYxM2MwLS41NS0uNDUtMS0xLTFWMiAxMy4xNGw1LjU5LTUuNTljLjM2LS4zNi44Ni0uNTkgMS40MS0uNTkuNTUgMCAxLjA1LjIxIDEuNDEuNTlMMTcuNzMgMTEgMTkgOS43M1YxM3oiLz48L3N2Zz4=)](https://modelcontextprotocol.io)
-[![Node](https://img.shields.io/badge/Node.js-%5E18-brightgreen)](https://nodejs.org)
-[![License](https://img.shields.io/github/license/YOUR_ORG/buildship-mcp-server)](LICENSE)
+[![MCP stdio](https://img.shields.io/badge/MCP-stdio-blue)](https://modelcontextprotocol.io)
+[![Node](https://img.shields.io/badge/Node.js-%E2%89%A518-brightgreen)](https://nodejs.org)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 > **Model Context Protocol server** that lets your AI assistant create and edit BuildShip **custom nodes** and **workflows** directly in your repository.
-
-> **GitHub Integration Required** — This MCP server works with BuildShip's GitHub-connected repository. Before using it, make sure **GitHub Integration is active** in your BuildShip project Settings. If you see a screen like the one below, click **"Talk to us"** to enable it on your plan.
-> 
-> ![BuildShip GitHub Integration settings screen showing "Version control, CI/CD pipeline and automated deployments" with a "Talk to us" button](docs/github-integration-required.png)
 
 ## What it does
 
 This MCP server exposes BuildShip repo operations as AI-callable tools. Your AI agent can:
 
 | Capability | Description |
-|---|---|
-| **List & read** custom nodes and workflows |
-| **Create** new nodes (`nodes/<id>/<version>/` with schema, inputs, output, meta, main.ts) |
-| **Create** new workflows (`workflows/<folder>/` with all 6 JSON files + trigger) |
-| **Update** node source code and JSON descriptors |
-| **Wire** nodes into existing workflows |
+| --- | --- |
+| **List & read** | Custom nodes and workflows |
+| **Create** | New nodes (`nodes/<id>/<version>/` with schema, inputs, output, meta, main.ts) |
+| **Create** | New workflows (`workflows/<folder>/` with all 6 JSON files + trigger) |
+| **Update** | Node source code and JSON descriptors |
+| **Wire** | Nodes into existing workflows |
 
 ---
 
-## One-Click Install Buttons
+## ⚠️ Prerequisite — Enable BuildShip GitHub Integration
 
-If your AI tool supports click-to-install badges, paste these into your own README or docs:
+This server reads and writes the **GitHub repository** that BuildShip syncs your project to. Before it can do anything useful, your BuildShip project must have **GitHub Integration enabled** in Project Settings.
 
-```markdown
-[![Install in Claude Code](https://img.shields.io/badge/Claude%20Code-Install-blue?style=for-the-badge&logo=claude&logoColor=white)](https://docs.claude.com/docs/claude-code-mcp)
-[![Install in Claude Desktop](https://img.shields.io/badge/Claude%20Desktop-Install-purple?style=for-the-badge&logo=claude&logoColor=white)](https://docs.anthropic.com/en/docs/claude-desktop/installation)
-[![Install in Cursor](https://img.shields.io/badge/Cursor-Install-black?style=for-the-badge&logo=cursor&logoColor=white)](https://www.cursor.com)
-[![Install in Zed](https://img.shields.io/badge/Zed-Install-084CCF?style=for-the-badge&logo=zedindustries&logoColor=white)](https://zed.dev)
-[![Install in Cline](https://img.shields.io/badge/Cline-Install-FF6B6B?style=for-the-badge)](https://cline.bot)
-```
+If GitHub Integration isn't on your plan, BuildShip's settings page shows a **"Talk to us"** button under *Version control, CI/CD pipeline and automated deployments* — click it to enable it.
+
+Once enabled, BuildShip will sync `nodes/`, `workflows/`, and `flow-id-to-label/` directories into your GitHub repo. That repo is what you'll point `BUILDSHIP_REPO` at below.
 
 ---
 
-## Quick Start (< 2 minutes)
+## Quick Start (genuine 2 minutes)
+
+This is the full happy path. Skip nothing.
 
 ### 1. Clone & build
 
 ```bash
-git clone https://github.com/YOUR_ORG/buildship-mcp-server.git
+git clone https://github.com/sgardoll/buildship-mcp-server.git
 cd buildship-mcp-server
-npm install
-npm run build       # builds dist/index.js
+npm install              # `prepare` hook auto-builds dist/
 ```
 
-### 2. Point to your BuildShip repo
+> If you already cloned previously and `dist/` is missing, run `npm run build`.
 
-The server auto-locates the repo by walking up from its own directory.
-If it can't find it, set this environment variable:
+### 2. Find the absolute path to your BuildShip repo
+
+This is the GitHub repo BuildShip syncs to (see prerequisite above). It must contain `nodes/` and `workflows/` directories at its root.
 
 ```bash
-export BUILDSHIP_REPO=/absolute/path/to/your/buildship-repo
+# macOS / Linux — print the full path
+cd /path/to/your/buildship-repo && pwd
+
+# Windows (PowerShell)
+cd C:\path\to\your\buildship-repo; (Get-Location).Path
 ```
 
-### 3. Configure your AI tool
+Copy that path — you'll paste it as `BUILDSHIP_REPO` in step 3.
 
-Pick your tool below and copy-paste the config.
+### 3. Sanity-check the install
+
+From inside `buildship-mcp-server`:
+
+```bash
+BUILDSHIP_REPO=/absolute/path/to/your/buildship-repo npm run check
+# → BuildShip repo: /absolute/path/to/your/buildship-repo
+```
+
+If you see that line, the server is correctly built and locates your repo. If you see an error, jump to [Troubleshooting](#troubleshooting).
+
+### 4. Wire it into your AI tool
+
+Pick **one** tool below and paste the snippet. The Claude Code CLI is the fastest:
+
+```bash
+claude mcp add --transport stdio \
+  --env BUILDSHIP_REPO=/absolute/path/to/your/buildship-repo \
+  buildship -- node /absolute/path/to/buildship-mcp-server/dist/index.js
+```
+
+Then verify: `claude mcp list` should show `buildship`. Ask your assistant *"List all custom nodes in the BuildShip repo"* — if you get a list, you're done.
+
+For other tools (Claude Desktop, Cursor, Zed, VS Code, Continue, OpenCode, Cline, Windsurf), see [Per-Tool Installation](#per-tool-installation) below.
+
+---
+
+## Compatible With
+
+These badges link to the install instructions for each tool, **not** auto-installers — they exist because no universal "click to install" protocol works across all clients. Tools that **do** have install deep-links (Cursor, VS Code) get a live link in their own section below.
+
+[![Claude Code](https://img.shields.io/badge/Claude%20Code-Compatible-D97757?style=for-the-badge)](#claude-code-cli)
+[![Claude Desktop](https://img.shields.io/badge/Claude%20Desktop-Compatible-D97757?style=for-the-badge)](#claude-desktop)
+[![Cursor](https://img.shields.io/badge/Cursor-Compatible-000000?style=for-the-badge)](#cursor)
+[![VS Code](https://img.shields.io/badge/VS%20Code-Compatible-007ACC?style=for-the-badge)](#vs-code)
+[![Zed](https://img.shields.io/badge/Zed-Compatible-084CCF?style=for-the-badge)](#zed)
+[![Continue](https://img.shields.io/badge/Continue-Compatible-7B7BFF?style=for-the-badge)](#continue-dev)
+[![OpenCode](https://img.shields.io/badge/OpenCode-Compatible-1F1F1F?style=for-the-badge)](#opencode)
+[![Cline](https://img.shields.io/badge/Cline-Compatible-FF6B6B?style=for-the-badge)](#cline--roo-code)
+[![Windsurf](https://img.shields.io/badge/Windsurf-Compatible-0FCFA6?style=for-the-badge)](#windsurf)
 
 ---
 
 ## Per-Tool Installation
+
+Every snippet below assumes you've replaced the two placeholders:
+
+- `/ABSOLUTE/PATH/TO/buildship-mcp-server` — where you cloned this repo
+- `/ABSOLUTE/PATH/TO/your-buildship-repo` — your BuildShip GitHub repo
 
 ### Claude Code (CLI)
 
 One command in your terminal (not inside Claude Code itself):
 
 ```bash
-# macOS / Linux
-claude mcp add --transport stdio buildship -- node \
-  /absolute/path/to/buildship-mcp-server/dist/index.js
-
-# Windows (add BUILDSHIP_REPO to your env first)
-claude mcp add --transport stdio buildship -- node \
-  C:\path\to\buildship-mcp-server\dist\index.js
+claude mcp add --transport stdio \
+  --env BUILDSHIP_REPO=/ABSOLUTE/PATH/TO/your-buildship-repo \
+  buildship -- node /ABSOLUTE/PATH/TO/buildship-mcp-server/dist/index.js
 ```
 
-Verify: run `claude mcp list` → you should see `buildship` listed.
+Verify: `claude mcp list` → you should see `buildship`. To remove later: `claude mcp remove buildship`.
 
-> **Project-scoped (team shared):** Create `.mcp.json` in your project root:
+> **Project-scoped (team shared):** Create `.mcp.json` in your project root and commit it for your team:
 > ```json
 > {
 >   "mcpServers": {
 >     "buildship": {
+>       "type": "stdio",
 >       "command": "node",
->       "args": ["/absolute/path/to/buildship-mcp-server/dist/index.js"],
->       "env": { "BUILDSHIP_REPO": "/absolute/path/to/your/buildship-repo" }
+>       "args": ["/ABSOLUTE/PATH/TO/buildship-mcp-server/dist/index.js"],
+>       "env": { "BUILDSHIP_REPO": "/ABSOLUTE/PATH/TO/your-buildship-repo" }
 >     }
 >   }
 > }
 > ```
-> This file can be committed for your team.
 
 ---
 
 ### Claude Desktop
 
-Edit your config file:
+Edit the config file:
 
 - **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
 - **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
 - **Linux**: `~/.config/Claude/claude_desktop_config.json`
 
-Add the `mcpServers` block (merge with existing if present):
+Add (or merge into) `mcpServers`:
 
 ```json
 {
   "mcpServers": {
     "buildship": {
       "command": "node",
-      "args": ["/absolute/path/to/buildship-mcp-server/dist/index.js"],
+      "args": ["/ABSOLUTE/PATH/TO/buildship-mcp-server/dist/index.js"],
       "env": {
-        "BUILDSHIP_REPO": "/absolute/path/to/your/buildship-repo"
+        "BUILDSHIP_REPO": "/ABSOLUTE/PATH/TO/your-buildship-repo"
       }
     }
   }
 }
 ```
 
-**Quit Claude Desktop completely** (`Cmd+Q` on macOS, close window + quit on Windows) and reopen.
-
-Verify: open chat → the tool picker should list BuildShip tools.
+**Fully quit Claude Desktop** (`Cmd+Q` on macOS — closing the window isn't enough) and reopen. The tool picker should now list BuildShip tools.
 
 ---
 
 ### Cursor
 
-Create or edit one of:
+Cursor supports an MCP deep-link install. Click this badge **after you've cloned and built the server**, then edit the placeholder paths in the dialog Cursor opens:
 
-- **Project-scoped:** `.cursor/mcp.json` (inside your project root)
+[![Add to Cursor](https://img.shields.io/badge/Add%20to-Cursor-000000?style=for-the-badge&logo=cursor&logoColor=white)](cursor://anysphere.cursor-deeplink/mcp/install?name=buildship&config=eyJjb21tYW5kIjoibm9kZSIsImFyZ3MiOlsiL0FCU09MVVRFL1BBVEgvVE8vYnVpbGRzaGlwLW1jcC1zZXJ2ZXIvZGlzdC9pbmRleC5qcyJdLCJlbnYiOnsiQlVJTERTSElQX1JFUE8iOiIvQUJTT0xVVEUvUEFUSC9UTy95b3VyLWJ1aWxkc2hpcC1yZXBvIn19)
+
+**Or manually** — create or edit one of:
+
+- **Project-scoped:** `.cursor/mcp.json` (in your project root)
 - **Global:** `~/.cursor/mcp.json`
 
 ```json
@@ -140,43 +180,31 @@ Create or edit one of:
   "mcpServers": {
     "buildship": {
       "command": "node",
-      "args": ["/absolute/path/to/buildship-mcp-server/dist/index.js"],
+      "args": ["/ABSOLUTE/PATH/TO/buildship-mcp-server/dist/index.js"],
       "env": {
-        "BUILDSHIP_REPO": "/absolute/path/to/your/buildship-repo"
+        "BUILDSHIP_REPO": "/ABSOLUTE/PATH/TO/your-buildship-repo"
       }
     }
   }
 }
 ```
 
-Restart Cursor. The tools will appear in **Composer → Agent** mode.
+Restart Cursor. Tools appear in **Composer → Agent** mode.
 
 ---
 
-### Cline / Roo Code
+### VS Code
 
-Cline stores config in VS Code extension settings. Open the Cline panel → ⚙️ → **MCP Servers** → **Edit MCP Settings**, or edit the file directly:
+VS Code 1.99+ ships native MCP support. Click this badge to open the install dialog (you'll still edit the paths):
 
-- **macOS:** `~/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json`
-- **Windows:** `%APPDATA%\Code\User\globalStorage\saoudrizwan.claude-dev\settings\cline_mcp_settings.json`
+[![Add to VS Code](https://img.shields.io/badge/Add%20to-VS%20Code-007ACC?style=for-the-badge&logo=visualstudiocode&logoColor=white)](vscode:mcp/install?%7B%22name%22%3A%22buildship%22%2C%22command%22%3A%22node%22%2C%22args%22%3A%5B%22%2FABSOLUTE%2FPATH%2FTO%2Fbuildship-mcp-server%2Fdist%2Findex.js%22%5D%2C%22env%22%3A%7B%22BUILDSHIP_REPO%22%3A%22%2FABSOLUTE%2FPATH%2FTO%2Fyour-buildship-repo%22%7D%7D)
+[![Add to VS Code Insiders](https://img.shields.io/badge/Add%20to-VS%20Code%20Insiders-1F9CF0?style=for-the-badge&logo=visualstudiocode&logoColor=white)](vscode-insiders:mcp/install?%7B%22name%22%3A%22buildship%22%2C%22command%22%3A%22node%22%2C%22args%22%3A%5B%22%2FABSOLUTE%2FPATH%2FTO%2Fbuildship-mcp-server%2Fdist%2Findex.js%22%5D%2C%22env%22%3A%7B%22BUILDSHIP_REPO%22%3A%22%2FABSOLUTE%2FPATH%2FTO%2Fyour-buildship-repo%22%7D%7D)
 
-```json
-{
-  "mcpServers": {
-    "buildship": {
-      "command": "node",
-      "args": ["/absolute/path/to/buildship-mcp-server/dist/index.js"],
-      "env": {
-        "BUILDSHIP_REPO": "/absolute/path/to/your/buildship-repo"
-      },
-      "alwaysAllow": [],
-      "disabled": false
-    }
-  }
-}
+**Or via CLI:**
+
+```bash
+code --add-mcp '{"name":"buildship","command":"node","args":["/ABSOLUTE/PATH/TO/buildship-mcp-server/dist/index.js"],"env":{"BUILDSHIP_REPO":"/ABSOLUTE/PATH/TO/your-buildship-repo"}}'
 ```
-
-Save → Cline auto-reloads. Verify in the MCP Servers panel.
 
 ---
 
@@ -186,59 +214,48 @@ Edit `~/.config/zed/settings.json` (or `~/Library/Application Support/Zed/settin
 
 ```json
 {
-  "assistant": {
-    "mcp_servers": {
-      "buildship": {
-        "command": "node",
-        "args": ["/absolute/path/to/buildship-mcp-server/dist/index.js"],
-        "env": {
-          "BUILDSHIP_REPO": "/absolute/path/to/your/buildship-repo"
-        }
-      }
-    }
-  }
-}
-```
-
-Reload `Cmd+Shift+P` → "zed: reload". Tools appear in the assistant slash menu.
-
----
-
-### Windsurf
-
-Windsurf uses standard `mcpServers` JSON. Add to Windsurf's MCP settings (or `.windsurf/mcp.json` if supported):
-
-```json
-{
-  "mcpServers": {
+  "context_servers": {
     "buildship": {
       "command": "node",
-      "args": ["/absolute/path/to/buildship-mcp-server/dist/index.js"],
+      "args": ["/ABSOLUTE/PATH/TO/buildship-mcp-server/dist/index.js"],
       "env": {
-        "BUILDSHIP_REPO": "/absolute/path/to/your/buildship-repo"
+        "BUILDSHIP_REPO": "/ABSOLUTE/PATH/TO/your-buildship-repo"
       }
     }
   }
 }
 ```
+
+Reload Zed (`Cmd+Shift+P` → "zed: reload"). Tools appear in the agent's tool list.
 
 ---
 
 ### Continue.dev
 
-Edit `~/.continue/config.json`:
+Continue uses `~/.continue/config.yaml` (YAML is the current schema). Add:
+
+```yaml
+mcpServers:
+  - name: buildship
+    command: node
+    args:
+      - /ABSOLUTE/PATH/TO/buildship-mcp-server/dist/index.js
+    env:
+      BUILDSHIP_REPO: /ABSOLUTE/PATH/TO/your-buildship-repo
+```
+
+Or, if you still use the legacy JSON config:
 
 ```json
 {
-  "mcp_server": {
-    "buildship": {
+  "mcpServers": [
+    {
+      "name": "buildship",
       "command": "node",
-      "args": ["/absolute/path/to/buildship-mcp-server/dist/index.js"],
-      "env": {
-        "BUILDSHIP_REPO": "/absolute/path/to/your/buildship-repo"
-      }
+      "args": ["/ABSOLUTE/PATH/TO/buildship-mcp-server/dist/index.js"],
+      "env": { "BUILDSHIP_REPO": "/ABSOLUTE/PATH/TO/your-buildship-repo" }
     }
-  }
+  ]
 }
 ```
 
@@ -246,16 +263,67 @@ Edit `~/.continue/config.json`:
 
 ### OpenCode
 
-Edit `.opencode/mcp.json` (project-scoped) or `~/.opencode/mcp.json` (global):
+OpenCode reads `opencode.json` (project root) or `~/.config/opencode/opencode.json` (global). Add a `mcp` block:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "buildship": {
+      "type": "local",
+      "command": ["node", "/ABSOLUTE/PATH/TO/buildship-mcp-server/dist/index.js"],
+      "enabled": true,
+      "environment": {
+        "BUILDSHIP_REPO": "/ABSOLUTE/PATH/TO/your-buildship-repo"
+      }
+    }
+  }
+}
+```
+
+Or interactively: `opencode mcp add`.
+
+---
+
+### Cline / Roo Code
+
+Open the Cline panel → ⚙️ → **MCP Servers** → **Edit MCP Settings**, or edit the file directly:
+
+- **macOS:** `~/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json`
+- **Windows:** `%APPDATA%\Code\User\globalStorage\saoudrizwan.claude-dev\settings\cline_mcp_settings.json`
 
 ```json
 {
   "mcpServers": {
     "buildship": {
       "command": "node",
-      "args": ["/absolute/path/to/buildship-mcp-server/dist/index.js"],
+      "args": ["/ABSOLUTE/PATH/TO/buildship-mcp-server/dist/index.js"],
       "env": {
-        "BUILDSHIP_REPO": "/absolute/path/to/your/buildship-repo"
+        "BUILDSHIP_REPO": "/ABSOLUTE/PATH/TO/your-buildship-repo"
+      },
+      "alwaysAllow": [],
+      "disabled": false
+    }
+  }
+}
+```
+
+Save — Cline auto-reloads.
+
+---
+
+### Windsurf
+
+Add to Windsurf's MCP settings (Settings → MCP Servers) or to `.windsurf/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "buildship": {
+      "command": "node",
+      "args": ["/ABSOLUTE/PATH/TO/buildship-mcp-server/dist/index.js"],
+      "env": {
+        "BUILDSHIP_REPO": "/ABSOLUTE/PATH/TO/your-buildship-repo"
       }
     }
   }
@@ -264,27 +332,25 @@ Edit `.opencode/mcp.json` (project-scoped) or `~/.opencode/mcp.json` (global):
 
 ---
 
-## Universal Install with `add-mcp`
-
-If you have the `add-mcp` CLI installed, install into *all* supported tools at once:
-
-```bash
-# Install to all detected MCP clients
-npx add-mcp https://github.com/YOUR_ORG/buildship-mcp-server --all
-
-# Or target specific ones
-npx add-mcp https://github.com/YOUR_ORG/buildship-mcp-server -a claude-code -a cursor
-```
-
-> `add-mcp` auto-generates the correct JSON format for each client. [Learn more](https://www.npmjs.com/package/add-mcp)
-
----
-
 ## Environment Variables
 
 | Variable | Required | Description |
-|---|---|---|
-| `BUILDSHIP_REPO` | **Strongly recommended** | Absolute path to your BuildShip repo. If omitted, the server walks up from its own directory and `cwd` looking for `nodes/` + `workflows/` + `flow-id-to-label/`. |
+| --- | --- | --- |
+| `BUILDSHIP_REPO` | **Yes (recommended)** | Absolute path to your BuildShip GitHub repo. If omitted, the server walks up from its own directory and `cwd` looking for `nodes/` + `workflows/`. Auto-detection only works when the server is *inside* the BuildShip repo, so explicit is safer. |
+
+---
+
+## Troubleshooting
+
+**`Could not locate the BuildShip repo`** — `BUILDSHIP_REPO` is unset and auto-detection failed. Set the env var to the absolute path of your repo. Verify with `BUILDSHIP_REPO=/your/path npm run check`.
+
+**`... does not look like a BuildShip repo (missing nodes/ or workflows/)`** — the path you set exists, but doesn't contain `nodes/` and `workflows/` directories. Make sure you're pointing at the **root** of the GitHub repo BuildShip syncs to, not a subfolder. If the directories are missing entirely, your BuildShip project may not have GitHub Integration enabled yet — see the [prerequisite](#%EF%B8%8F-prerequisite--enable-buildship-github-integration) above.
+
+**`Cannot find module '.../dist/index.js'`** — `dist/` doesn't exist yet. Run `npm run build` inside the cloned repo. (Fresh installs auto-build via the `prepare` hook; this only happens after a manual `git clone` followed by `npm install --ignore-scripts` or a broken build.)
+
+**Tools don't appear in my client** — most clients need a full restart, not just a reload. For Claude Desktop, that means `Cmd+Q` and reopen. Check the client's MCP logs for `[buildship-mcp] ready`.
+
+**The deep-link button does nothing** — your OS may not have a handler registered for the `cursor://` or `vscode:` URL scheme. Use the manual config snippet in that tool's section instead.
 
 ---
 
@@ -301,6 +367,7 @@ flow-id-to-label/<workflowId>.txt
 ### Node conventions
 
 Each version lives under `nodes/<id>/<version>/` with five files:
+
 - `schema.json` — id, label, description, type, version, dependencies, icon metadata
 - `inputs.json` — parameter definitions visible in the BuildShip UI
 - `output.json` — return value schema consumed by downstream nodes
@@ -312,6 +379,7 @@ Each version lives under `nodes/<id>/<version>/` with five files:
 ### Workflow conventions
 
 Each workflow lives under `workflows/<folder>/` with six files:
+
 - `schema.json` — id, name, description, runtime version, node values, variables
 - `meta.json` — git integration version, node ID-to-label mapping
 - `nodes.json` — ordered array of node entries (each with id, type, label, and optional library ref/version)
@@ -349,8 +417,8 @@ Plus `flow-id-to-label/<workflowId>.txt` mapping the workflow's UUID to a human-
     "label": "Greet User",
     "description": "Returns a personalized greeting.",
     "inputs": {
-      "name":     { "type": "string",  "title": "Name",     "description": "Person's name." },
-      "loud":     { "type": "boolean", "title": "Loud",     "description": "YELL if true." }
+      "name": { "type": "string",  "title": "Name", "description": "Person's name." },
+      "loud": { "type": "boolean", "title": "Loud", "description": "YELL if true." }
     },
     "required": ["name"],
     "output": { "type": "string", "title": "Greeting" },
@@ -385,18 +453,18 @@ The server picks a folder name like `users-greet-aB3x`, generates a 20-char work
 
 ---
 
-## Smoketest: Ask Claude to do this
+## Smoketest: Ask your AI to do this
 
 Once configured, ask your AI assistant:
 
 > **"List all custom nodes in the BuildShip repo."**
-> → Claude calls `list_nodes` and shows you every node with its id, version, and label.
+> → Calls `list_nodes` and shows you every node with its id, version, and label.
 
 > **"Create a new node called `reverse-string` that takes a `text` input and returns it reversed."**
-> → Claude calls `create_node`, generating schema, inputs, output, meta, and main.ts. You commit the new folder.
+> → Calls `create_node`, generating schema, inputs, output, meta, and main.ts. Commit the new folder.
 
 > **"Create a workflow `api/reverse` with a POST trigger at `/reverse` that wires the `reverse-string` node."**
-> → Claude calls `create_workflow` with the trigger and node wiring, then calls `set_flow_label`.
+> → Calls `create_workflow` with the trigger and node wiring, then calls `set_flow_label`.
 
 ---
 
@@ -415,6 +483,7 @@ Once configured, ask your AI assistant:
 npm run dev        # tsc --watch
 npm run typecheck  # tsc --noEmit
 npm run build      # tsc → dist/index.js
+npm run check      # resolve BUILDSHIP_REPO and exit
 ```
 
 The server is plain stdio JSON-RPC, so you can smoke-test it from a shell:
@@ -425,28 +494,29 @@ The server is plain stdio JSON-RPC, so you can smoke-test it from a shell:
   printf '%s\n' '{"jsonrpc":"2.0","method":"notifications/initialized"}'
   printf '%s\n' '{"jsonrpc":"2.0","id":2,"method":"tools/list"}'
   sleep 0.3
-) | node dist/index.js
+) | BUILDSHIP_REPO=/your/repo node dist/index.js
 ```
 
 ---
 
-## Git Remote Setup
+## Forking / Setting Your Own Remote
 
-This repo was originally hosted under a personal account. Before pushing any changes, point it to your own remote:
+If you forked this repo to host your own copy:
 
 ```bash
-# Check current remote
-git remote -v
-
-# Replace with your own repository
-git remote set-url origin https://github.com/YOUR_ORG/YOUR_REPO.git
-
+git remote set-url origin https://github.com/YOUR_FORK/buildship-mcp-server.git
 # Or run the interactive helper
 npm run init-remote
 ```
 
-Or skip interactive prompts:
+Or skip the prompt:
 
 ```bash
-BUILDSHIP_GIT_REMOTE=https://github.com/my-org/buildship-components.git npm run init-remote
+BUILDSHIP_GIT_REMOTE=https://github.com/your-fork/buildship-mcp-server.git npm run init-remote
 ```
+
+---
+
+## License
+
+MIT — see [LICENSE](LICENSE).

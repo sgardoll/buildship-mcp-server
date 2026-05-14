@@ -2,16 +2,41 @@
   "name": "buildship-mcp-server",
   "version": "0.1.0",
   "description": "MCP server for creating and editing BuildShip nodes and workflows in this repository.",
+  "license": "MIT",
+  "author": "Stuart Gardoll",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sgardoll/buildship-mcp-server.git"
+  },
+  "bugs": {
+    "url": "https://github.com/sgardoll/buildship-mcp-server/issues"
+  },
+  "homepage": "https://github.com/sgardoll/buildship-mcp-server#readme",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "buildship",
+    "claude",
+    "ai-tools"
+  ],
   "type": "module",
   "bin": {
     "buildship-mcp": "dist/index.js"
   },
   "main": "dist/index.js",
+  "files": [
+    "dist",
+    "scripts",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "tsc --watch",
     "typecheck": "tsc --noEmit",
+    "check": "node dist/index.js --check",
+    "prepare": "tsc",
     "init-remote": "node scripts/setup-remote.mjs"
   },
   "dependencies": {

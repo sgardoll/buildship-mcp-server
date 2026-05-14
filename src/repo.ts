@@ -1,5 +1,6 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const FALLBACK_ENV_KEY = "BUILDSHIP_REPO";
 
@@ -15,10 +16,12 @@ async function exists(p: string): Promise<boolean> {
 }
 
 async function looksLikeBuildshipRepo(dir: string): Promise<boolean> {
+  // A BuildShip repo always has nodes/ and workflows/. The flow-id-to-label/
+  // directory may not exist yet in a fresh repo, so we don't require it here —
+  // it will be created on demand by createWorkflow/createNode/setLabel.
   return (
     (await exists(path.join(dir, "nodes"))) &&
-    (await exists(path.join(dir, "workflows"))) &&
-    (await exists(path.join(dir, "flow-id-to-label")))
+    (await exists(path.join(dir, "workflows")))
   );
 }
 
@@ -36,14 +39,14 @@ export async function resolveRepoRoot(): Promise<string> {
     const abs = path.resolve(fromEnv);
     if (!(await looksLikeBuildshipRepo(abs))) {
       throw new Error(
-        `${FALLBACK_ENV_KEY}=${fromEnv} does not look like a BuildShip repo (missing nodes/, workflows/, or flow-id-to-label/).`,
+        `${FALLBACK_ENV_KEY}=${fromEnv} does not look like a BuildShip repo (missing nodes/ or workflows/).`,
       );
     }
     cachedRoot = abs;
     return abs;
   }
 
-  const candidates = [path.dirname(new URL(import.meta.url).pathname), process.cwd()];
+  const candidates = [path.dirname(fileURLToPath(import.meta.url)), process.cwd()];
   for (const start of candidates) {
     let dir = start;
     while (true) {
