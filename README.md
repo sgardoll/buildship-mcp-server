@@ -6,7 +6,7 @@
 
 > **Model Context Protocol server** that lets your AI assistant create and edit BuildShip **custom nodes** and **workflows** directly in your repository.
 
-![Uploading Gemini_Generated_Image_34mrfq34mrfq34mr.png…]()
+<img width="2360" height="1340" alt="Gemini_Generated_Image_34mrfq34mrfq34mr" src="https://github.com/user-attachments/assets/f1d03952-41bc-4398-be80-f1db93d779a9" />
 
 ## What it does
 
