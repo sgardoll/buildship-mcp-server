@@ -6,6 +6,8 @@
 
 > **Model Context Protocol server** that lets your AI assistant create and edit BuildShip **custom nodes** and **workflows** directly in your repository.
 
+![Uploading Gemini_Generated_Image_34mrfq34mrfq34mr.png…]()
+
 ## What it does
 
 This MCP server exposes BuildShip repo operations as AI-callable tools. Your AI agent can:
