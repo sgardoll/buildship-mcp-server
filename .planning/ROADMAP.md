@@ -17,7 +17,7 @@ Take the buildship-mcp-server from a 0.1.0 prototype with known critical securit
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Critical Security Fixes** - Path traversal in 6 tools + shell injection in setup script
-- [ ] **Phase 2: Test Foundation** - Test framework, path traversal tests, core tool workflow tests
+- [x] **Phase 2: Test Foundation** - Test framework, path traversal tests, core tool workflow tests
 - [ ] **Phase 3: CI & Linting** - GitHub Actions workflow + ESLint/Biome config
 - [ ] **Phase 4: Correctness & Integrity Fixes** - Semver sorting, crypto IDs, atomic writes
 - [ ] **Phase 5: Git Sync Tool** - Implement commit_and_push tool to complete end-to-end workflow
@@ -49,9 +49,9 @@ Plans:
 **Plans**: TBD
 
 Plans:
-- [ ] 02-01: Add test framework (node:test or vitest) and test script to package.json
-- [ ] 02-02: Write path traversal regression tests for all 6 fixed tools
-- [ ] 02-03: Write integration tests for core tool workflows
+- [x] 02-01: Add test framework (node:test or vitest) and test script to package.json
+- [x] 02-02: Write path traversal regression tests for all 6 fixed tools
+- [x] 02-03: Write integration tests for core tool workflows
 
 ### Phase 3: CI & Linting
 **Goal**: Automated quality gates run on every push and pull request.
@@ -104,7 +104,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 1. Critical Security Fixes | v1.0 | 2/2 | Complete | 2026-07-04 |
-| 2. Test Foundation | v1.0 | 0/3 | Not started | - |
+| 2. Test Foundation | v1.0 | 3/3 | Complete | 2026-07-04 |
 | 3. CI & Linting | v1.0 | 0/2 | Not started | - |
 | 4. Correctness & Integrity Fixes | v1.0 | 0/3 | Not started | - |
 | 5. Git Sync Tool | v1.0 | 0/2 | Not started | - |

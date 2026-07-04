@@ -36,6 +36,7 @@
     "dev": "tsc --watch",
     "typecheck": "tsc --noEmit",
     "check": "node dist/index.js --check",
+    "test": "tsc && node --test",
     "prepare": "tsc",
     "init-remote": "node scripts/setup-remote.mjs"
   },

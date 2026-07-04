@@ -122,3 +122,8 @@ export async function listDirs(dir: string): Promise<string[]> {
   const entries = await fs.readdir(dir, { withFileTypes: true });
   return entries.filter((e) => e.isDirectory()).map((e) => e.name).sort();
 }
+
+/** Reset the cached repo root. Useful for tests that need to point at different repos. */
+export function resetRepoRootCache(): void {
+  cachedRoot = null;
+}
