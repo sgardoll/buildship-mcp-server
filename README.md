@@ -1,6 +1,7 @@
 # BuildShip MCP Server
 
 [![MCP stdio](https://img.shields.io/badge/MCP-stdio-blue)](https://modelcontextprotocol.io)
+[![Version](https://img.shields.io/badge/version-0.2.0-blue)](https://github.com/sgardoll/buildship-mcp-server)
 [![Node](https://img.shields.io/badge/Node.js-%E2%89%A518-brightgreen)](https://nodejs.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
@@ -518,7 +519,12 @@ npm run dev        # tsc --watch
 npm run typecheck  # tsc --noEmit
 npm run build      # tsc → dist/index.js
 npm run check      # resolve BUILDSHIP_REPO and exit
+npm test           # tsc + node --test (42 tests)
+npm run lint       # biome check src test scripts
+npm run format     # biome format --write src test scripts
 ```
+
+Tests use Node's built-in `node:test` runner (zero test dependencies). CI runs on every push and pull request via GitHub Actions — typecheck, lint, and test.
 
 The server is plain stdio JSON-RPC, so you can smoke-test it from a shell:
 
