@@ -136,7 +136,7 @@ async function main() {
   });
 
   const server = new Server(
-    { name: "buildship-mcp", version: "0.1.0" },
+    { name: "buildship-mcp", version: "1.0.0" },
     { capabilities: { tools: {} } },
   );
 
