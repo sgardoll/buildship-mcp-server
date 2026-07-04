@@ -19,7 +19,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1: Critical Security Fixes** - Path traversal in 6 tools + shell injection in setup script
 - [x] **Phase 2: Test Foundation** - Test framework, path traversal tests, core tool workflow tests
 - [x] **Phase 3: CI & Linting** - GitHub Actions workflow + ESLint/Biome config
-- [ ] **Phase 4: Correctness & Integrity Fixes** - Semver sorting, crypto IDs, atomic writes
+- [x] **Phase 4: Correctness & Integrity Fixes** - Semver sorting, crypto IDs, atomic writes
 - [ ] **Phase 5: Git Sync Tool** - Implement commit_and_push tool to complete end-to-end workflow
 
 ## Phase Details
@@ -78,9 +78,9 @@ Plans:
 **Plans**: TBD
 
 Plans:
-- [ ] 04-01: Fix semver version sorting (alphabetical → semantic compare)
-- [ ] 04-02: Replace `Math.random` with `crypto` for ID generation
-- [ ] 04-03: Implement atomic file writes (temp + rename pattern)
+- [x] 04-01: Fix semver version sorting (alphabetical → semantic compare)
+- [x] 04-02: Replace `Math.random` with `crypto` for ID generation
+- [x] 04-03: Implement atomic file writes (temp + rename pattern)
 
 ### Phase 5: Git Sync Tool
 **Goal**: Complete the stated end-to-end workflow — agent changes are validated and pushed to GitHub.
@@ -106,5 +106,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 1. Critical Security Fixes | v1.0 | 2/2 | Complete | 2026-07-04 |
 | 2. Test Foundation | v1.0 | 3/3 | Complete | 2026-07-04 |
 | 3. CI & Linting | v1.0 | 2/2 | Complete | 2026-07-04 |
-| 4. Correctness & Integrity Fixes | v1.0 | 0/3 | Not started | - |
+| 4. Correctness & Integrity Fixes | v1.0 | 3/3 | Complete | 2026-07-04 |
 | 5. Git Sync Tool | v1.0 | 0/2 | Not started | - |

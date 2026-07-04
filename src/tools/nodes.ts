@@ -15,6 +15,13 @@ import {
 const SLUG_RE = /^[a-z0-9][a-z0-9-]*$/;
 const SEMVER_RE = /^\d+\.\d+\.\d+$/;
 
+/** Compare two semver strings in ascending order (oldest first). */
+function compareSemverAsc(a: string, b: string): number {
+  const [aMajor, aMinor, aPatch] = a.split(".").map(Number);
+  const [bMajor, bMinor, bPatch] = b.split(".").map(Number);
+  return aMajor - bMajor || aMinor - bMinor || aPatch - bPatch;
+}
+
 const DEFAULT_ICON_URL = "https://framerusercontent.com/images/kcxXJqIDlUecsc85vAP6hZM4.png";
 
 const DEFAULT_MAIN_TS = `export default async function (
@@ -175,7 +182,7 @@ export async function listNodes(raw: unknown) {
 
   const results = await Promise.all(
     sliced.map(async (id) => {
-      const versions = await listDirs(path.join(root, id)).catch(() => []);
+      const versions = (await listDirs(path.join(root, id)).catch(() => [])).sort(compareSemverAsc);
       let label: string | null = null;
       const latest = versions[versions.length - 1];
       if (latest) {
@@ -212,7 +219,7 @@ export async function getNode(raw: unknown) {
     throw new Error(`Node not found: ${id}`);
   }
 
-  const versions = await listDirs(nodeDir);
+  const versions = (await listDirs(nodeDir)).sort(compareSemverAsc);
   if (versions.length === 0) {
     throw new Error(`Node ${id} has no version directories.`);
   }

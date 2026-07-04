@@ -94,15 +94,20 @@ export async function readJson<T = unknown>(file: string): Promise<T> {
   return JSON.parse(raw) as T;
 }
 
-export async function writeJson(file: string, value: unknown): Promise<void> {
+async function writeAtomic(file: string, content: string): Promise<void> {
   await fs.mkdir(path.dirname(file), { recursive: true });
-  await fs.writeFile(file, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+  const tmp = `${file}.${process.pid}.tmp`;
+  await fs.writeFile(tmp, content, "utf8");
+  await fs.rename(tmp, file);
+}
+
+export async function writeJson(file: string, value: unknown): Promise<void> {
+  await writeAtomic(file, `${JSON.stringify(value, null, 2)}\n`);
 }
 
 export async function writeText(file: string, value: string): Promise<void> {
-  await fs.mkdir(path.dirname(file), { recursive: true });
   const ending = value.endsWith("\n") ? value : `${value}\n`;
-  await fs.writeFile(file, ending, "utf8");
+  await writeAtomic(file, ending);
 }
 
 export async function readText(file: string): Promise<string> {

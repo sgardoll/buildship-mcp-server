@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import path from "node:path";
 import { z } from "zod";
 import {
@@ -16,20 +16,24 @@ import {
 const SEMVER_RE = /^\d+\.\d+\.\d+$/;
 const NODE_TYPES = ["script", "output", "branch", "loop", "trigger", "library"] as const;
 
+const ID_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+
+/** Generate a random string of the given length using a CSPRNG. */
+function randomString(length: number): string {
+  const bytes = randomBytes(length);
+  let out = "";
+  for (let i = 0; i < length; i++) out += ID_ALPHABET[bytes[i] % ID_ALPHABET.length];
+  return out;
+}
+
 function shortSuffix(): string {
   // Buildship-style 4-char suffix used in workflow folder names like `auth-byok-registration-OmLH`.
-  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-  let out = "";
-  for (let i = 0; i < 4; i++) out += alphabet[Math.floor(Math.random() * alphabet.length)];
-  return out;
+  return randomString(4);
 }
 
 function generateWorkflowId(): string {
   // Generates a 20-char id similar to the existing repo (e.g. `HceqKhqYlr6X0RXBOmLH`).
-  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-  let out = "";
-  for (let i = 0; i < 20; i++) out += alphabet[Math.floor(Math.random() * alphabet.length)];
-  return out;
+  return randomString(20);
 }
 
 function slugify(name: string): string {

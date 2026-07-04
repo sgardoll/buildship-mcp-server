@@ -6,7 +6,7 @@
 
 ## Current Phase
 
-**Phase 4: Correctness & Integrity Fixes** — Not started
+**Phase 5: Git Sync Tool** — Not started
 
 ## Active Plan
 
@@ -45,3 +45,4 @@ This milestone takes the repo from "0.1.0 prototype" to "1.0 production-ready" b
 - **2026-07-04:** Phase 1 complete. Added `safeJoin` to `repo.ts` — prevents path traversal via `..`, absolute paths. Replaced all 11 vulnerable `path.join` call sites in `workflows.ts` (6 sites) and `nodes.ts` (5 sites). Fixed shell injection in `setup-remote.mjs` by replacing `execSync` (string interpolation) with `execFileSync` (args array). Verified: `tsc --noEmit` clean, end-to-end MCP test confirms path traversal blocked and valid tools still work.
 - **2026-07-04:** Phase 2 complete. Added `node:test` framework (zero deps). Added `resetRepoRootCache()` to `repo.ts` for test isolation. 37 tests across 3 files: `repo.test.mjs` (10 safeJoin unit tests), `nodes.test.mjs` (14 node tool integration + path traversal tests), `workflows.test.mjs` (13 workflow tool integration + path traversal tests). All pass.
 - **2026-07-04:** Phase 3 complete. Added Biome 2.x for linting + formatting (single dev dep). Fixed all lint issues: useTemplate (7 string concat → template literals), noNonNullAssertion (4 non-null assertions → proper type narrowing), noExplicitAny (4 `any` → `unknown` with type assertions), noTemplateCurlyInString (1 biome-ignore for intentional), organizeImports (auto-fixed). Added GitHub Actions CI workflow (typecheck + lint + test on push/PR). All 37 tests pass, Biome clean, tsc clean.
+- **2026-07-04:** Phase 4 complete. Three fixes: (1) Semver sorting — added `compareSemverAsc` to `nodes.ts`, `listNodes` and `getNode` now sort versions semantically (1.0.10 > 1.0.2, not alphabetical). (2) Crypto IDs — replaced `Math.random` with `crypto.randomBytes` in `workflows.ts` via shared `randomString` helper. (3) Atomic writes — added `writeAtomic` to `repo.ts` (temp file + rename), `writeJson` and `writeText` now crash-safe. Added semver sorting test (38 total, all pass).

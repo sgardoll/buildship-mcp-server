@@ -167,3 +167,20 @@ describe("Node tools — path traversal protection", () => {
     );
   });
 });
+
+describe("Node tools — semver version sorting", () => {
+  it("reports 1.0.10 as latest, not 1.0.2 (semantic, not alphabetical)", async () => {
+    await createNode({ id: "semver-test", label: "Semver Test", version: "1.0.0" });
+    await createNode({ id: "semver-test", label: "Semver Test", version: "1.0.10" });
+    await createNode({ id: "semver-test", label: "Semver Test", version: "1.0.2" });
+
+    const listResult = await listNodes({ search: "semver-test" });
+    const node = listResult.nodes[0];
+    assert.equal(node.latestVersion, "1.0.10");
+    assert.deepEqual(node.versions, ["1.0.0", "1.0.2", "1.0.10"]);
+
+    const getResult = await getNode({ id: "semver-test" });
+    assert.equal(getResult.version, "1.0.10");
+    assert.deepEqual(getResult.availableVersions, ["1.0.0", "1.0.2", "1.0.10"]);
+  });
+});
