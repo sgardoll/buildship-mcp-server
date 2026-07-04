@@ -1,35 +1,32 @@
 #!/usr/bin/env node
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import {
-  CallToolRequestSchema,
-  ListToolsRequestSchema,
-} from "@modelcontextprotocol/sdk/types.js";
-import { z, ZodError } from "zod";
+import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
+import { ZodError, type z } from "zod";
 import { zodToJsonSchema } from "./jsonSchema.js";
 import { resolveRepoRoot } from "./repo.js";
 import {
   CreateNodeInputSchema,
-  GetNodeSchema,
-  ListNodesSchema,
-  UpdateNodeFileSchema,
   createNode,
+  GetNodeSchema,
   getNode,
+  ListNodesSchema,
   listNodes,
+  UpdateNodeFileSchema,
   updateNodeFile,
 } from "./tools/nodes.js";
 import {
   AddNodeToWorkflowSchema,
+  addNodeToWorkflow,
   CreateWorkflowSchema,
+  createWorkflow,
   GetLabelSchema,
   GetWorkflowSchema,
-  ListWorkflowsSchema,
-  SetLabelSchema,
-  addNodeToWorkflow,
-  createWorkflow,
   getLabel,
   getWorkflow,
+  ListWorkflowsSchema,
   listWorkflows,
+  SetLabelSchema,
   setLabel,
 } from "./tools/workflows.js";
 
@@ -98,8 +95,7 @@ const TOOLS: ToolDef[] = [
   },
   {
     name: "set_flow_label",
-    description:
-      "Write or overwrite a flow-id-to-label/<id>.txt file with a human-readable label.",
+    description: "Write or overwrite a flow-id-to-label/<id>.txt file with a human-readable label.",
     schema: SetLabelSchema,
     handler: setLabel,
   },

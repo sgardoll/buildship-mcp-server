@@ -37,6 +37,8 @@
     "typecheck": "tsc --noEmit",
     "check": "node dist/index.js --check",
     "test": "tsc && node --test",
+    "lint": "biome check src test scripts",
+    "format": "biome format --write src test scripts",
     "prepare": "tsc",
     "init-remote": "node scripts/setup-remote.mjs"
   },
@@ -46,6 +48,7 @@
     "zod-to-json-schema": "^3.23.5"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.5.2",
     "@types/node": "^22.0.0",
     "typescript": "^5.5.4"
   },

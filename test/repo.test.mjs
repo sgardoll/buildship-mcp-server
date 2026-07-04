@@ -1,5 +1,5 @@
-import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { describe, it } from "node:test";
 import { safeJoin } from "../dist/repo.js";
 
 describe("safeJoin — valid paths", () => {
@@ -38,10 +38,7 @@ describe("safeJoin — path traversal blocked", () => {
   });
 
   it("blocks single ../ traversal", () => {
-    assert.throws(
-      () => safeJoin("/tmp/base", ".."),
-      /Path escapes the allowed directory/,
-    );
+    assert.throws(() => safeJoin("/tmp/base", ".."), /Path escapes the allowed directory/);
   });
 
   it("blocks traversal with .txt suffix (setLabel/getLabel pattern)", () => {

@@ -1,15 +1,10 @@
-import { describe, it, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm, mkdir } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { after, before, describe, it } from "node:test";
 import { resetRepoRootCache } from "../../dist/repo.js";
-import {
-  createNode,
-  getNode,
-  listNodes,
-  updateNodeFile,
-} from "../../dist/tools/nodes.js";
+import { createNode, getNode, listNodes, updateNodeFile } from "../../dist/tools/nodes.js";
 
 let tempRepo;
 
@@ -38,7 +33,9 @@ describe("Node tools — valid operations", () => {
       },
       required: ["name"],
       output: { type: "string", title: "Greeting" },
-      mainTs: 'export default async function ({ name }: NodeInputs): NodeOutput {\n  return `Hello, ${name}`;\n}\n',
+      mainTs:
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: intentional template literal in generated TypeScript code
+        "export default async function ({ name }: NodeInputs): NodeOutput {\n  return `Hello, ${name}`;\n}\n",
     });
     assert.equal(result.nodeId, "greet-user");
     assert.equal(result.version, "1.0.0");
@@ -95,10 +92,7 @@ describe("Node tools — valid operations", () => {
 
 describe("Node tools — overwrite protection", () => {
   it("refuses to create existing node without overwrite", async () => {
-    await assert.rejects(
-      createNode({ id: "greet-user", label: "Duplicate" }),
-      /already exists/,
-    );
+    await assert.rejects(createNode({ id: "greet-user", label: "Duplicate" }), /already exists/);
   });
 
   it("creates with overwrite: true replaces content", async () => {
@@ -142,17 +136,11 @@ describe("Node tools — JSON validation", () => {
 
 describe("Node tools — path traversal protection", () => {
   it("blocks getNode with ../../etc id", async () => {
-    await assert.rejects(
-      getNode({ id: "../../etc" }),
-      /Path escapes the allowed directory/,
-    );
+    await assert.rejects(getNode({ id: "../../etc" }), /Path escapes the allowed directory/);
   });
 
   it("blocks getNode with absolute path id (treated as relative, not found)", async () => {
-    await assert.rejects(
-      getNode({ id: "/etc/passwd" }),
-      /Node not found/,
-    );
+    await assert.rejects(getNode({ id: "/etc/passwd" }), /Node not found/);
   });
 
   it("blocks updateNodeFile with ../../etc id", async () => {

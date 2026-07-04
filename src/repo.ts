@@ -25,9 +25,7 @@ export function safeJoin(base: string, ...segments: string[]): string {
   const resolved = path.resolve(joined);
   const resolvedBase = path.resolve(base);
   if (resolved !== resolvedBase && !resolved.startsWith(resolvedBase + path.sep)) {
-    throw new Error(
-      `Path escapes the allowed directory: ${segments.join("/")}`,
-    );
+    throw new Error(`Path escapes the allowed directory: ${segments.join("/")}`);
   }
   return resolved;
 }
@@ -36,10 +34,7 @@ async function looksLikeBuildshipRepo(dir: string): Promise<boolean> {
   // A BuildShip repo always has nodes/ and workflows/. The flow-id-to-label/
   // directory may not exist yet in a fresh repo, so we don't require it here —
   // it will be created on demand by createWorkflow/createNode/setLabel.
-  return (
-    (await exists(path.join(dir, "nodes"))) &&
-    (await exists(path.join(dir, "workflows")))
-  );
+  return (await exists(path.join(dir, "nodes"))) && (await exists(path.join(dir, "workflows")));
 }
 
 /**
@@ -101,12 +96,12 @@ export async function readJson<T = unknown>(file: string): Promise<T> {
 
 export async function writeJson(file: string, value: unknown): Promise<void> {
   await fs.mkdir(path.dirname(file), { recursive: true });
-  await fs.writeFile(file, JSON.stringify(value, null, 2) + "\n", "utf8");
+  await fs.writeFile(file, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 }
 
 export async function writeText(file: string, value: string): Promise<void> {
   await fs.mkdir(path.dirname(file), { recursive: true });
-  const ending = value.endsWith("\n") ? value : value + "\n";
+  const ending = value.endsWith("\n") ? value : `${value}\n`;
   await fs.writeFile(file, ending, "utf8");
 }
 
@@ -120,7 +115,10 @@ export async function pathExists(p: string): Promise<boolean> {
 
 export async function listDirs(dir: string): Promise<string[]> {
   const entries = await fs.readdir(dir, { withFileTypes: true });
-  return entries.filter((e) => e.isDirectory()).map((e) => e.name).sort();
+  return entries
+    .filter((e) => e.isDirectory())
+    .map((e) => e.name)
+    .sort();
 }
 
 /** Reset the cached repo root. Useful for tests that need to point at different repos. */

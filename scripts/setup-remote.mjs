@@ -8,8 +8,8 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { createInterface } from "node:readline";
 import path from "node:path";
+import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -38,7 +38,12 @@ function setRemote(url) {
 
 async function prompt(query) {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
-  return new Promise((resolve) => rl.question(query, (a) => { rl.close(); resolve(a.trim()); }));
+  return new Promise((resolve) =>
+    rl.question(query, (a) => {
+      rl.close();
+      resolve(a.trim());
+    }),
+  );
 }
 
 async function main() {

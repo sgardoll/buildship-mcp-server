@@ -18,7 +18,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Critical Security Fixes** - Path traversal in 6 tools + shell injection in setup script
 - [x] **Phase 2: Test Foundation** - Test framework, path traversal tests, core tool workflow tests
-- [ ] **Phase 3: CI & Linting** - GitHub Actions workflow + ESLint/Biome config
+- [x] **Phase 3: CI & Linting** - GitHub Actions workflow + ESLint/Biome config
 - [ ] **Phase 4: Correctness & Integrity Fixes** - Semver sorting, crypto IDs, atomic writes
 - [ ] **Phase 5: Git Sync Tool** - Implement commit_and_push tool to complete end-to-end workflow
 
@@ -64,8 +64,8 @@ Plans:
 **Plans**: TBD
 
 Plans:
-- [ ] 03-01: Add ESLint flat config or Biome config with TypeScript rules
-- [ ] 03-02: Add GitHub Actions CI workflow (build, typecheck, test, lint)
+- [x] 03-01: Add ESLint flat config or Biome config with TypeScript rules
+- [x] 03-02: Add GitHub Actions CI workflow (build, typecheck, test, lint)
 
 ### Phase 4: Correctness & Integrity Fixes
 **Goal**: Fix data integrity issues that could cause silent corruption or incorrect behavior.
@@ -105,6 +105,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 |-------|-----------|----------------|--------|-----------|
 | 1. Critical Security Fixes | v1.0 | 2/2 | Complete | 2026-07-04 |
 | 2. Test Foundation | v1.0 | 3/3 | Complete | 2026-07-04 |
-| 3. CI & Linting | v1.0 | 0/2 | Not started | - |
+| 3. CI & Linting | v1.0 | 2/2 | Complete | 2026-07-04 |
 | 4. Correctness & Integrity Fixes | v1.0 | 0/3 | Not started | - |
 | 5. Git Sync Tool | v1.0 | 0/2 | Not started | - |

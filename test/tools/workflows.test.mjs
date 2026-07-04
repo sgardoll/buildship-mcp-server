@@ -1,16 +1,16 @@
-import { describe, it, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm, mkdir } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { after, before, describe, it } from "node:test";
 import { resetRepoRootCache } from "../../dist/repo.js";
 import {
+  addNodeToWorkflow,
   createWorkflow,
+  getLabel,
   getWorkflow,
   listWorkflows,
-  addNodeToWorkflow,
   setLabel,
-  getLabel,
 } from "../../dist/tools/workflows.js";
 
 let tempRepo;
@@ -110,7 +110,7 @@ describe("Workflow tools — overwrite protection", () => {
   });
 
   it("creates with overwrite: true replaces workflow", async () => {
-    const first = await createWorkflow({ name: "overwrite-test-2" });
+    const _first = await createWorkflow({ name: "overwrite-test-2" });
     const result = await createWorkflow({
       name: "overwrite-test-2",
       description: "Replaced",
@@ -130,10 +130,7 @@ describe("Workflow tools — path traversal protection", () => {
   });
 
   it("blocks getWorkflow with absolute path folder (treated as relative, not found)", async () => {
-    await assert.rejects(
-      getWorkflow({ folder: "/etc" }),
-      /Workflow not found/,
-    );
+    await assert.rejects(getWorkflow({ folder: "/etc" }), /Workflow not found/);
   });
 
   it("blocks addNodeToWorkflow with ../../etc folder", async () => {

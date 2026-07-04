@@ -1,5 +1,5 @@
-import path from "node:path";
 import { randomUUID } from "node:crypto";
+import path from "node:path";
 import { z } from "zod";
 import {
   labelsDir,
@@ -41,16 +41,15 @@ function slugify(name: string): string {
 }
 
 const WorkflowNodeSchema = z.object({
-  id: z
-    .string()
-    .uuid()
-    .optional()
-    .describe("UUID of the node entry (auto-generated if omitted)."),
+  id: z.string().uuid().optional().describe("UUID of the node entry (auto-generated if omitted)."),
   label: z.string().optional(),
   type: z.enum(NODE_TYPES).default("script"),
   nodeId: z.string().optional().describe("Library/custom node id this entry references."),
   version: z.string().regex(SEMVER_RE).optional(),
-  values: z.record(z.string(), z.unknown()).optional().describe("Entry for schema.json nodeValues."),
+  values: z
+    .record(z.string(), z.unknown())
+    .optional()
+    .describe("Entry for schema.json nodeValues."),
 });
 
 export type WorkflowNodeInput = z.infer<typeof WorkflowNodeSchema>;
@@ -81,7 +80,9 @@ export const CreateWorkflowSchema = z.object({
     .optional(),
   nodes: z.array(WorkflowNodeSchema).default([]),
   inputs: z.record(z.string(), z.unknown()).default({}),
-  output: z.record(z.string(), z.unknown()).default({ output: { buildship: { index: 0 }, title: "Output" } }),
+  output: z
+    .record(z.string(), z.unknown())
+    .default({ output: { buildship: { index: 0 }, title: "Output" } }),
   overwrite: z.boolean().default(false),
 });
 
@@ -161,12 +162,12 @@ export async function createWorkflow(raw: unknown) {
     _$lastNodeOutput_: {},
   };
 
-  if (triggerId) {
+  if (triggerId && input.trigger) {
     nodeIdToLabel[triggerId] = `rest-api-call-${triggerId.slice(-4)}`;
     nodeValues[triggerId] = {
-      "config.method": input.trigger!.method,
-      "config.path": input.trigger!.path,
-      "config.requestContentType": input.trigger!.requestContentType,
+      "config.method": input.trigger.method,
+      "config.path": input.trigger.path,
+      "config.requestContentType": input.trigger.requestContentType,
       "outputs.body": { _$keys_: ["output"] },
       "outputs.cacheMaxAge": { _$keys_: ["state", "_$bsCacheMaxAge_"] },
       "outputs.status": { _$keys_: ["state", "_$bsStatusCode_"] },
@@ -215,7 +216,8 @@ export async function createWorkflow(raw: unknown) {
     properties: input.output,
   };
 
-  const triggersJson = input.trigger ? buildRestTriggerEntry(triggerId!, input.trigger) : [];
+  const triggersJson =
+    triggerId && input.trigger ? buildRestTriggerEntry(triggerId, input.trigger) : [];
 
   await writeJson(path.join(dir, "meta.json"), metaJson);
   await writeJson(path.join(dir, "schema.json"), schemaJson);
@@ -305,9 +307,7 @@ export async function addNodeToWorkflow(raw: unknown) {
   const id = node.id ?? randomUUID();
 
   const nodesPath = path.join(dir, "nodes.json");
-  const existing = await readJson<Array<Record<string, unknown>>>(nodesPath).catch(
-    () => null,
-  );
+  const existing = await readJson<Array<Record<string, unknown>>>(nodesPath).catch(() => null);
   const nodes: Array<Record<string, unknown>> = existing ?? [];
   if (nodes.some((n) => n.id === id)) {
     throw new Error(`Node id ${id} already exists in workflow ${folder}.`);
@@ -322,16 +322,18 @@ export async function addNodeToWorkflow(raw: unknown) {
   if (node.label || node.values) {
     const metaPath = path.join(dir, "meta.json");
     const schemaPath = path.join(dir, "schema.json");
-    const meta: Record<string, any> =
-      (await readJson<Record<string, any>>(metaPath).catch(() => null)) ?? {};
-    const schema: Record<string, any> =
-      (await readJson<Record<string, any>>(schemaPath).catch(() => null)) ?? {};
+    const meta: Record<string, unknown> =
+      (await readJson<Record<string, unknown>>(metaPath).catch(() => null)) ?? {};
+    const schema: Record<string, unknown> =
+      (await readJson<Record<string, unknown>>(schemaPath).catch(() => null)) ?? {};
     if (node.label) {
-      meta.nodeIdToLabel = { ...(meta.nodeIdToLabel ?? {}), [id]: node.label };
+      const existingLabels = (meta.nodeIdToLabel ?? {}) as Record<string, string>;
+      meta.nodeIdToLabel = { ...existingLabels, [id]: node.label };
       await writeJson(metaPath, meta);
     }
     if (node.values) {
-      schema.nodeValues = { ...(schema.nodeValues ?? {}), [id]: node.values };
+      const existingValues = (schema.nodeValues ?? {}) as Record<string, Record<string, unknown>>;
+      schema.nodeValues = { ...existingValues, [id]: node.values };
       await writeJson(schemaPath, schema);
     }
   }

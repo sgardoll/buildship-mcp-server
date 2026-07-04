@@ -15,8 +15,7 @@ import {
 const SLUG_RE = /^[a-z0-9][a-z0-9-]*$/;
 const SEMVER_RE = /^\d+\.\d+\.\d+$/;
 
-const DEFAULT_ICON_URL =
-  "https://framerusercontent.com/images/kcxXJqIDlUecsc85vAP6hZM4.png";
+const DEFAULT_ICON_URL = "https://framerusercontent.com/images/kcxXJqIDlUecsc85vAP6hZM4.png";
 
 const DEFAULT_MAIN_TS = `export default async function (
   { name }: NodeInputs,
@@ -29,9 +28,7 @@ const DEFAULT_MAIN_TS = `export default async function (
 
 export const NodeInputPropertySchema = z
   .object({
-    type: z
-      .enum(["string", "number", "boolean", "object", "array", "integer"])
-      .default("string"),
+    type: z.enum(["string", "number", "boolean", "object", "array", "integer"]).default("string"),
     title: z.string().optional(),
     description: z.string().optional(),
     default: z.unknown().optional(),
@@ -136,13 +133,13 @@ export async function createNode(raw: unknown) {
   }
 
   const files: Record<string, string> = {
-    "meta.json": JSON.stringify({ gitIntegrationVersion: "v1" }, null, 2) + "\n",
-    "schema.json": JSON.stringify(toSchemaJson(input), null, 2) + "\n",
-    "inputs.json": JSON.stringify(toInputsJson(input), null, 2) + "\n",
-    "output.json": JSON.stringify(toOutputJson(input), null, 2) + "\n",
+    "meta.json": `${JSON.stringify({ gitIntegrationVersion: "v1" }, null, 2)}\n`,
+    "schema.json": `${JSON.stringify(toSchemaJson(input), null, 2)}\n`,
+    "inputs.json": `${JSON.stringify(toInputsJson(input), null, 2)}\n`,
+    "output.json": `${JSON.stringify(toOutputJson(input), null, 2)}\n`,
     "main.ts": (input.mainTs ?? DEFAULT_MAIN_TS).endsWith("\n")
       ? (input.mainTs ?? DEFAULT_MAIN_TS)
-      : (input.mainTs ?? DEFAULT_MAIN_TS) + "\n",
+      : `${input.mainTs ?? DEFAULT_MAIN_TS}\n`,
   };
 
   for (const [name, content] of Object.entries(files)) {
