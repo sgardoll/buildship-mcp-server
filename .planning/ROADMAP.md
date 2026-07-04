@@ -20,7 +20,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 2: Test Foundation** - Test framework, path traversal tests, core tool workflow tests
 - [x] **Phase 3: CI & Linting** - GitHub Actions workflow + ESLint/Biome config
 - [x] **Phase 4: Correctness & Integrity Fixes** - Semver sorting, crypto IDs, atomic writes
-- [ ] **Phase 5: Git Sync Tool** - Implement commit_and_push tool to complete end-to-end workflow
+- [x] **Phase 5: Git Sync Tool** - Implement commit_and_push tool to complete end-to-end workflow
 
 ## Phase Details
 
@@ -93,8 +93,8 @@ Plans:
 **Plans**: TBD
 
 Plans:
-- [ ] 05-01: Implement `sync_to_git` tool with safe git operations
-- [ ] 05-02: Update README to document the complete workflow
+- [x] 05-01: Implement `sync_to_git` tool with safe git operations
+- [x] 05-02: Update README to document the complete workflow
 
 ## Progress
 
@@ -107,4 +107,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 2. Test Foundation | v1.0 | 3/3 | Complete | 2026-07-04 |
 | 3. CI & Linting | v1.0 | 2/2 | Complete | 2026-07-04 |
 | 4. Correctness & Integrity Fixes | v1.0 | 3/3 | Complete | 2026-07-04 |
-| 5. Git Sync Tool | v1.0 | 0/2 | Not started | - |
+| 5. Git Sync Tool | v1.0 | 2/2 | Complete | 2026-07-04 |

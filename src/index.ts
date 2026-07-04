@@ -5,6 +5,7 @@ import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprot
 import { ZodError, type z } from "zod";
 import { zodToJsonSchema } from "./jsonSchema.js";
 import { resolveRepoRoot } from "./repo.js";
+import { SyncToGitSchema, syncToGit } from "./tools/git.js";
 import {
   CreateNodeInputSchema,
   createNode,
@@ -104,6 +105,13 @@ const TOOLS: ToolDef[] = [
     description: "Read the human-readable label associated with a workflow or node id.",
     schema: GetLabelSchema,
     handler: getLabel,
+  },
+  {
+    name: "sync_to_git",
+    description:
+      "Stage, commit, and optionally push changes in the BuildShip repo's git working tree. Use after creating or updating nodes/workflows to sync changes to GitHub via BuildShip's GitHub Integration.",
+    schema: SyncToGitSchema,
+    handler: syncToGit,
   },
 ];
 

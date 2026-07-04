@@ -19,6 +19,7 @@ This MCP server exposes BuildShip repo operations as AI-callable tools. Your AI 
 | **Create** | New workflows (`workflows/<folder>/` with all 6 JSON files + trigger) |
 | **Update** | Node source code and JSON descriptors |
 | **Wire** | Nodes into existing workflows |
+| **Sync** | Stage, commit, and push changes to GitHub via BuildShip's GitHub Integration |
 
 ---
 
@@ -418,6 +419,7 @@ Plus `flow-id-to-label/<workflowId>.txt` mapping the workflow's UUID to a human-
 | `create_workflow` | Scaffold a new workflow with `meta.json`, `schema.json`, `nodes.json`, `inputs.json`, `output.json`, `triggers.json`, plus a `flow-id-to-label/<workflowId>.txt`. Optionally seeds a REST trigger and any number of node entries; always appends a Flow Output node. |
 | `add_node_to_workflow` | Append a node entry to an existing workflow's `nodes.json` and (optionally) sync `meta.nodeIdToLabel` and `schema.nodeValues`. |
 | `set_flow_label` / `get_flow_label` | Read or write a single `flow-id-to-label/<id>.txt` file. |
+| `sync_to_git` | Stage, commit, and optionally push changes in the BuildShip repo's git working tree. Use after creating or updating nodes/workflows to sync to GitHub. |
 
 ### Example: create a node
 
@@ -463,6 +465,20 @@ Plus `flow-id-to-label/<workflowId>.txt` mapping the workflow's UUID to a human-
 
 The server picks a folder name like `users-greet-aB3x`, generates a 20-char workflow id, writes all six workflow files, registers `flow-id-to-label/<workflowId>.txt`, and appends a Flow Output node for you.
 
+### Example: sync changes to GitHub
+
+```jsonc
+{
+  "name": "sync_to_git",
+  "arguments": {
+    "message": "Add reverse-string node and wire into api/reverse workflow",
+    "push": true
+  }
+}
+```
+
+The server stages all changes in the BuildShip repo, commits with your message, and pushes to GitHub. Set `push: false` to commit only (e.g., to batch changes before pushing). Push failures are soft — the commit succeeds even if the remote is unreachable.
+
 ---
 
 ## Smoketest: Ask your AI to do this
@@ -473,10 +489,13 @@ Once configured, ask your AI assistant:
 > → Calls `list_nodes` and shows you every node with its id, version, and label.
 
 > **"Create a new node called `reverse-string` that takes a `text` input and returns it reversed."**
-> → Calls `create_node`, generating schema, inputs, output, meta, and main.ts. Commit the new folder.
+> → Calls `create_node`, generating schema, inputs, output, meta, and main.ts.
 
 > **"Create a workflow `api/reverse` with a POST trigger at `/reverse` that wires the `reverse-string` node."**
 > → Calls `create_workflow` with the trigger and node wiring, then calls `set_flow_label`.
+
+> **"Sync all changes to GitHub."**
+> → Calls `sync_to_git` to stage, commit, and push everything to the BuildShip repo's git remote.
 
 ---
 
@@ -485,6 +504,9 @@ Once configured, ask your AI assistant:
 - Refuses to overwrite an existing node version or workflow folder unless you pass `overwrite: true`.
 - Validates JSON content before writing JSON files via `update_node_file`.
 - Enforces lowercase-kebab-case node ids and SemVer versions.
+- All path operations use `safeJoin` — path traversal via `..` or absolute paths is blocked.
+- All git operations use `execFileSync` with args array (no shell) — no shell injection risk.
+- Push failures are soft — the commit succeeds even if the remote is unreachable or authentication fails.
 - Refuses to start if the repo root cannot be located, so the agent gets a clear error rather than scribbling files in `cwd`.
 
 ---
