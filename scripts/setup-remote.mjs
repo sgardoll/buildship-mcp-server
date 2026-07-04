@@ -7,20 +7,20 @@
  *   BUILDSHIP_GIT_REMOTE=... npm run init-remote  # non-interactive
  */
 
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { createInterface } from "node:readline";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-function run(cmd) {
-  return execSync(cmd, { cwd: REPO_ROOT, encoding: "utf8" }).trim();
+function runGit(args) {
+  return execFileSync("git", args, { cwd: REPO_ROOT, encoding: "utf8" }).trim();
 }
 
 function getCurrentRemotes() {
   try {
-    const out = run("git remote -v");
+    const out = runGit(["remote", "-v"]);
     return out || "(none)";
   } catch {
     return "(not a git repository)";
@@ -29,11 +29,11 @@ function getCurrentRemotes() {
 
 function setRemote(url) {
   try {
-    run(`git remote remove origin`);
+    runGit(["remote", "remove", "origin"]);
   } catch {
     // no existing origin — fine
   }
-  run(`git remote add origin ${JSON.stringify(url)}`);
+  runGit(["remote", "add", "origin", url]);
 }
 
 async function prompt(query) {

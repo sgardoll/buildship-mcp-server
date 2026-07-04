@@ -7,6 +7,7 @@ import {
   pathExists,
   readJson,
   readText,
+  safeJoin,
   writeJson,
   writeText,
 } from "../repo.js";
@@ -126,7 +127,7 @@ function toSchemaJson(input: CreateNodeInput) {
 export async function createNode(raw: unknown) {
   const input = CreateNodeInputSchema.parse(raw);
   const root = await nodesDir();
-  const versionDir = path.join(root, input.id, input.version);
+  const versionDir = safeJoin(root, input.id, input.version);
 
   if ((await pathExists(versionDir)) && !input.overwrite) {
     throw new Error(
@@ -148,7 +149,7 @@ export async function createNode(raw: unknown) {
     await writeText(path.join(versionDir, name), content);
   }
 
-  const labelFile = path.join(await labelsDir(), `${input.id}.txt`);
+  const labelFile = safeJoin(await labelsDir(), `${input.id}.txt`);
   if (!(await pathExists(labelFile))) {
     await writeText(labelFile, input.label);
   }
@@ -209,7 +210,7 @@ export const GetNodeSchema = z.object({
 export async function getNode(raw: unknown) {
   const { id, version } = GetNodeSchema.parse(raw);
   const root = await nodesDir();
-  const nodeDir = path.join(root, id);
+  const nodeDir = safeJoin(root, id);
   if (!(await pathExists(nodeDir))) {
     throw new Error(`Node not found: ${id}`);
   }
@@ -220,7 +221,7 @@ export async function getNode(raw: unknown) {
   }
 
   const v = version ?? versions[versions.length - 1];
-  const versionDir = path.join(nodeDir, v);
+  const versionDir = safeJoin(nodeDir, v);
   if (!(await pathExists(versionDir))) {
     throw new Error(`Version ${v} not found for node ${id}. Available: ${versions.join(", ")}`);
   }
@@ -246,7 +247,7 @@ export const UpdateNodeFileSchema = z.object({
 export async function updateNodeFile(raw: unknown) {
   const { id, version, file, content } = UpdateNodeFileSchema.parse(raw);
   const root = await nodesDir();
-  const versionDir = path.join(root, id, version);
+  const versionDir = safeJoin(root, id, version);
   if (!(await pathExists(versionDir))) {
     throw new Error(`Node ${id}@${version} does not exist.`);
   }

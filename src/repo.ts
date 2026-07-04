@@ -15,6 +15,23 @@ async function exists(p: string): Promise<boolean> {
   }
 }
 
+/**
+ * Join `base` with `segments` and verify the result stays inside `base`.
+ * Prevents path traversal via `..`, absolute paths, or null bytes in
+ * user-supplied tool parameters. Throws if the resolved path escapes `base`.
+ */
+export function safeJoin(base: string, ...segments: string[]): string {
+  const joined = path.join(base, ...segments);
+  const resolved = path.resolve(joined);
+  const resolvedBase = path.resolve(base);
+  if (resolved !== resolvedBase && !resolved.startsWith(resolvedBase + path.sep)) {
+    throw new Error(
+      `Path escapes the allowed directory: ${segments.join("/")}`,
+    );
+  }
+  return resolved;
+}
+
 async function looksLikeBuildshipRepo(dir: string): Promise<boolean> {
   // A BuildShip repo always has nodes/ and workflows/. The flow-id-to-label/
   // directory may not exist yet in a fresh repo, so we don't require it here —

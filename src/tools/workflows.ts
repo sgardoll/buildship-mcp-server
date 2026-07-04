@@ -7,6 +7,7 @@ import {
   pathExists,
   readJson,
   readText,
+  safeJoin,
   workflowsDir,
   writeJson,
   writeText,
@@ -128,7 +129,7 @@ export async function createWorkflow(raw: unknown) {
   const wfId = input.workflowId ?? generateWorkflowId();
 
   const root = await workflowsDir();
-  const dir = path.join(root, folder);
+  const dir = safeJoin(root, folder);
   if ((await pathExists(dir)) && !input.overwrite) {
     throw new Error(`Workflow folder already exists: ${folder}. Pass overwrite: true to replace.`);
   }
@@ -223,7 +224,7 @@ export async function createWorkflow(raw: unknown) {
   await writeJson(path.join(dir, "output.json"), outputJson);
   await writeJson(path.join(dir, "triggers.json"), triggersJson);
 
-  await writeText(path.join(await labelsDir(), `${wfId}.txt`), folder);
+  await writeText(safeJoin(await labelsDir(), `${wfId}.txt`), folder);
 
   return {
     folder,
@@ -272,7 +273,7 @@ export const GetWorkflowSchema = z.object({
 export async function getWorkflow(raw: unknown) {
   const { folder } = GetWorkflowSchema.parse(raw);
   const root = await workflowsDir();
-  const dir = path.join(root, folder);
+  const dir = safeJoin(root, folder);
   if (!(await pathExists(dir))) {
     throw new Error(`Workflow not found: ${folder}`);
   }
@@ -296,7 +297,7 @@ export const AddNodeToWorkflowSchema = z.object({
 export async function addNodeToWorkflow(raw: unknown) {
   const { folder, node } = AddNodeToWorkflowSchema.parse(raw);
   const root = await workflowsDir();
-  const dir = path.join(root, folder);
+  const dir = safeJoin(root, folder);
   if (!(await pathExists(dir))) {
     throw new Error(`Workflow not found: ${folder}`);
   }
@@ -348,7 +349,7 @@ export const SetLabelSchema = z.object({
 
 export async function setLabel(raw: unknown) {
   const { id, label } = SetLabelSchema.parse(raw);
-  const file = path.join(await labelsDir(), `${id}.txt`);
+  const file = safeJoin(await labelsDir(), `${id}.txt`);
   await writeText(file, label);
   return { id, label, file: path.basename(file) };
 }
@@ -357,7 +358,7 @@ export const GetLabelSchema = z.object({ id: z.string().min(1) });
 
 export async function getLabel(raw: unknown) {
   const { id } = GetLabelSchema.parse(raw);
-  const file = path.join(await labelsDir(), `${id}.txt`);
+  const file = safeJoin(await labelsDir(), `${id}.txt`);
   if (!(await pathExists(file))) {
     return { id, label: null, exists: false };
   }

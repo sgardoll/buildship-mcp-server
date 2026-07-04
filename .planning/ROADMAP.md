@@ -16,7 +16,7 @@ Take the buildship-mcp-server from a 0.1.0 prototype with known critical securit
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Critical Security Fixes** - Path traversal in 6 tools + shell injection in setup script
+- [x] **Phase 1: Critical Security Fixes** - Path traversal in 6 tools + shell injection in setup script
 - [ ] **Phase 2: Test Foundation** - Test framework, path traversal tests, core tool workflow tests
 - [ ] **Phase 3: CI & Linting** - GitHub Actions workflow + ESLint/Biome config
 - [ ] **Phase 4: Correctness & Integrity Fixes** - Semver sorting, crypto IDs, atomic writes
@@ -35,8 +35,8 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans**: TBD
 
 Plans:
-- [ ] 01-01: Add `safeJoin` path guard to `repo.ts` and replace all `path.join` calls in tools
-- [ ] 01-02: Fix shell injection in `setup-remote.mjs` (replace `execSync` with `execFileSync`)
+- [x] 01-01: Add `safeJoin` path guard to `repo.ts` and replace all `path.join` calls in tools
+- [x] 01-02: Fix shell injection in `setup-remote.mjs` (replace `execSync` with `execFileSync`)
 
 ### Phase 2: Test Foundation
 **Goal**: Establish a test framework and prove the security fixes from Phase 1 work, plus cover core tool workflows.
@@ -103,7 +103,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
-| 1. Critical Security Fixes | v1.0 | 0/2 | Not started | - |
+| 1. Critical Security Fixes | v1.0 | 2/2 | Complete | 2026-07-04 |
 | 2. Test Foundation | v1.0 | 0/3 | Not started | - |
 | 3. CI & Linting | v1.0 | 0/2 | Not started | - |
 | 4. Correctness & Integrity Fixes | v1.0 | 0/3 | Not started | - |
