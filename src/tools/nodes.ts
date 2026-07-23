@@ -8,9 +8,9 @@ import {
   readJson,
   readText,
   safeJoin,
-  writeJson,
-  writeText,
+  writeFilesTransaction,
 } from "../repo.js";
+import { assertDeploymentValid, validateNode } from "./validation.js";
 
 const SLUG_RE = /^[a-z0-9][a-z0-9-]*$/;
 const SEMVER_RE = /^\d+\.\d+\.\d+$/;
@@ -25,11 +25,11 @@ function compareSemverAsc(a: string, b: string): number {
 const DEFAULT_ICON_URL = "https://framerusercontent.com/images/kcxXJqIDlUecsc85vAP6hZM4.png";
 
 const DEFAULT_MAIN_TS = `export default async function (
-  { name }: NodeInputs,
+  inputs: NodeInputs,
   { logging }: NodeScriptOptions,
-): NodeOutput {
-  logging.log("Input Param 'name': ", name);
-  return "Output: " + name;
+): Promise<NodeOutput> {
+  logging.log("Inputs: ", inputs);
+  return {} as NodeOutput;
 }
 `;
 
@@ -45,32 +45,44 @@ export const NodeInputPropertySchema = z
   })
   .passthrough();
 
-export const CreateNodeInputSchema = z.object({
-  id: z
-    .string()
-    .min(2)
-    .max(80)
-    .regex(SLUG_RE, "id must be lowercase kebab-case (a-z, 0-9, hyphen)"),
-  label: z.string().min(1),
-  description: z.string().default(""),
-  version: z.string().regex(SEMVER_RE).default("1.0.0"),
-  type: z.enum(["script", "trigger"]).default("script"),
-  iconUrl: z.string().url().optional(),
-  dependencies: z.record(z.string(), z.string()).default({}),
-  inputs: z.record(z.string(), NodeInputPropertySchema).default({}),
-  required: z.array(z.string()).default([]),
-  output: z
-    .object({
-      type: z.string().default("object"),
-      title: z.string().optional(),
-      description: z.string().optional(),
-      properties: z.record(z.string(), z.unknown()).default({}),
-    })
-    .partial()
-    .default({}),
-  mainTs: z.string().optional(),
-  overwrite: z.boolean().default(false),
-});
+export const CreateNodeInputSchema = z
+  .object({
+    id: z
+      .string()
+      .min(2)
+      .max(80)
+      .regex(SLUG_RE, "id must be lowercase kebab-case (a-z, 0-9, hyphen)"),
+    label: z.string().min(1),
+    description: z.string().default(""),
+    version: z.string().regex(SEMVER_RE).default("1.0.0"),
+    type: z.enum(["script", "trigger"]).default("script"),
+    iconUrl: z.string().url().optional(),
+    dependencies: z.record(z.string(), z.string()).default({}),
+    inputs: z.record(z.string(), NodeInputPropertySchema).default({}),
+    required: z.array(z.string()).default([]),
+    output: z
+      .object({
+        type: z.string().default("object"),
+        title: z.string().optional(),
+        description: z.string().optional(),
+        properties: z.record(z.string(), z.unknown()).default({}),
+      })
+      .partial()
+      .default({}),
+    mainTs: z.string().optional(),
+    overwrite: z.boolean().default(false),
+  })
+  .superRefine((input, ctx) => {
+    for (const required of input.required) {
+      if (!(required in input.inputs)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["required"],
+          message: `required input \`${required}\` is not defined in inputs`,
+        });
+      }
+    }
+  });
 
 export type CreateNodeInput = z.infer<typeof CreateNodeInputSchema>;
 
@@ -149,14 +161,17 @@ export async function createNode(raw: unknown) {
       : `${input.mainTs ?? DEFAULT_MAIN_TS}\n`,
   };
 
-  for (const [name, content] of Object.entries(files)) {
-    await writeText(path.join(versionDir, name), content);
-  }
-
   const labelFile = safeJoin(await labelsDir(), `${input.id}.txt`);
+  const transactionFiles = Object.entries(files).map(([name, content]) => ({
+    file: path.join(versionDir, name),
+    content,
+  }));
   if (!(await pathExists(labelFile))) {
-    await writeText(labelFile, input.label);
+    transactionFiles.push({ file: labelFile, content: `${input.label}\n` });
   }
+  await writeFilesTransaction(transactionFiles, async () =>
+    assertDeploymentValid(await validateNode(input.id, input.version)),
+  );
 
   return {
     nodeId: input.id,
@@ -182,18 +197,14 @@ export async function listNodes(raw: unknown) {
 
   const results = await Promise.all(
     sliced.map(async (id) => {
-      const versions = (await listDirs(path.join(root, id)).catch(() => [])).sort(compareSemverAsc);
+      const versions = (await listDirs(path.join(root, id))).sort(compareSemverAsc);
       let label: string | null = null;
       const latest = versions[versions.length - 1];
       if (latest) {
-        try {
-          const schema = await readJson<{ label?: string }>(
-            path.join(root, id, latest, "schema.json"),
-          );
-          label = schema.label ?? null;
-        } catch {
-          /* schema may not exist */
-        }
+        const schema = await readJson<{ label?: string }>(
+          path.join(root, id, latest, "schema.json"),
+        );
+        label = schema.label ?? null;
       }
       return { id, versions, latestVersion: latest ?? null, label };
     }),
@@ -207,7 +218,7 @@ export async function listNodes(raw: unknown) {
 }
 
 export const GetNodeSchema = z.object({
-  id: z.string().min(1),
+  id: z.string().regex(SLUG_RE),
   version: z.string().regex(SEMVER_RE).optional(),
 });
 
@@ -234,15 +245,15 @@ export async function getNode(raw: unknown) {
     id,
     version: v,
     availableVersions: versions,
-    schema: await readJson(path.join(versionDir, "schema.json")).catch(() => null),
-    inputs: await readJson(path.join(versionDir, "inputs.json")).catch(() => null),
-    output: await readJson(path.join(versionDir, "output.json")).catch(() => null),
-    mainTs: await readText(path.join(versionDir, "main.ts")).catch(() => null),
+    schema: await readJson(path.join(versionDir, "schema.json")),
+    inputs: await readJson(path.join(versionDir, "inputs.json")),
+    output: await readJson(path.join(versionDir, "output.json")),
+    mainTs: await readText(path.join(versionDir, "main.ts")),
   };
 }
 
 export const UpdateNodeFileSchema = z.object({
-  id: z.string().min(1),
+  id: z.string().regex(SLUG_RE),
   version: z.string().regex(SEMVER_RE),
   file: z.enum(["main.ts", "inputs.json", "output.json", "schema.json"]),
   content: z.string().min(1),
@@ -263,9 +274,20 @@ export async function updateNodeFile(raw: unknown) {
     } catch (err) {
       throw new Error(`${file} content is not valid JSON: ${(err as Error).message}`);
     }
-    await writeJson(path.join(versionDir, file), parsed);
+    await writeFilesTransaction(
+      [{ file: path.join(versionDir, file), content: `${JSON.stringify(parsed, null, 2)}\n` }],
+      async () => assertDeploymentValid(await validateNode(id, version)),
+    );
   } else {
-    await writeText(path.join(versionDir, file), content);
+    await writeFilesTransaction(
+      [
+        {
+          file: path.join(versionDir, file),
+          content: content.endsWith("\n") ? content : `${content}\n`,
+        },
+      ],
+      async () => assertDeploymentValid(await validateNode(id, version)),
+    );
   }
 
   return { id, version, file, updated: true };

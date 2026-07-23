@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { after, before, describe, it } from "node:test";
@@ -35,7 +35,7 @@ describe("Node tools — valid operations", () => {
       output: { type: "string", title: "Greeting" },
       mainTs:
         // biome-ignore lint/suspicious/noTemplateCurlyInString: intentional template literal in generated TypeScript code
-        "export default async function ({ name }: NodeInputs): NodeOutput {\n  return `Hello, ${name}`;\n}\n",
+        "export default async function ({ name }: NodeInputs): Promise<NodeOutput> {\n  return `Hello, ${name}`;\n}\n",
     });
     assert.equal(result.nodeId, "greet-user");
     assert.equal(result.version, "1.0.0");
@@ -66,7 +66,8 @@ describe("Node tools — valid operations", () => {
   });
 
   it("updates main.ts content", async () => {
-    const newContent = 'export default async function (): NodeOutput {\n  return "updated";\n}\n';
+    const newContent =
+      'export default async function (): Promise<NodeOutput> {\n  return "updated";\n}\n';
     const result = await updateNodeFile({
       id: "greet-user",
       version: "1.0.0",
@@ -84,7 +85,11 @@ describe("Node tools — valid operations", () => {
       id: "greet-user",
       version: "1.0.0",
       file: "inputs.json",
-      content: JSON.stringify({ type: "object", properties: {}, required: [] }),
+      content: JSON.stringify({
+        type: "object",
+        properties: { name: { type: "string" }, loud: { type: "boolean" } },
+        required: ["name"],
+      }),
     });
     assert.equal(result.updated, true);
   });
@@ -136,11 +141,11 @@ describe("Node tools — JSON validation", () => {
 
 describe("Node tools — path traversal protection", () => {
   it("blocks getNode with ../../etc id", async () => {
-    await assert.rejects(getNode({ id: "../../etc" }), /Path escapes the allowed directory/);
+    await assert.rejects(getNode({ id: "../../etc" }), /Invalid/);
   });
 
-  it("blocks getNode with absolute path id (treated as relative, not found)", async () => {
-    await assert.rejects(getNode({ id: "/etc/passwd" }), /Node not found/);
+  it("rejects absolute path ids at schema validation", async () => {
+    await assert.rejects(getNode({ id: "/etc/passwd" }), /Invalid/);
   });
 
   it("blocks updateNodeFile with ../../etc id", async () => {
@@ -151,7 +156,7 @@ describe("Node tools — path traversal protection", () => {
         file: "main.ts",
         content: "evil",
       }),
-      /Path escapes the allowed directory/,
+      /Invalid/,
     );
   });
 
@@ -163,8 +168,64 @@ describe("Node tools — path traversal protection", () => {
         file: "main.ts",
         content: "evil",
       }),
-      /Path escapes the allowed directory/,
+      /Invalid/,
     );
+  });
+});
+
+describe("Node tools — semantic validation and rollback", () => {
+  it("rejects a TypeScript output mismatch and restores the previous main.ts", async () => {
+    await createNode({
+      id: "rollback-node",
+      label: "Rollback Node",
+      output: { type: "string" },
+      mainTs: 'export default async function (): Promise<NodeOutput> {\n  return "valid";\n}\n',
+    });
+    const mainPath = path.join(tempRepo, "nodes", "rollback-node", "1.0.0", "main.ts");
+    const before = await readFile(mainPath, "utf8");
+    await assert.rejects(
+      updateNodeFile({
+        id: "rollback-node",
+        version: "1.0.0",
+        file: "main.ts",
+        content: "export default async function (): Promise<NodeOutput> {\n  return 42;\n}\n",
+      }),
+      /Type 'number' is not assignable to type 'string'/,
+    );
+    assert.equal(await readFile(mainPath, "utf8"), before);
+  });
+
+  it("rejects required input names that are absent from properties", async () => {
+    await assert.rejects(
+      createNode({
+        id: "bad-required",
+        label: "Bad Required",
+        required: ["missing"],
+      }),
+      /required input `missing` is not defined/,
+    );
+  });
+
+  it("checks unannotated function inputs against inputs.json", async () => {
+    await assert.rejects(
+      createNode({
+        id: "bad-destructure",
+        label: "Bad Destructure",
+        inputs: { name: { type: "string" } },
+        output: { type: "string" },
+        mainTs: 'export default async function ({ typo }) {\n  return "hello";\n}\n',
+      }),
+      /destructures undeclared input `typo`/,
+    );
+  });
+
+  it("does not mask malformed required JSON files", async () => {
+    await createNode({ id: "strict-read-node", label: "Strict Read" });
+    const schemaPath = path.join(tempRepo, "nodes", "strict-read-node", "1.0.0", "schema.json");
+    const original = await readFile(schemaPath, "utf8");
+    await writeFile(schemaPath, "{ malformed", "utf8");
+    await assert.rejects(getNode({ id: "strict-read-node" }), /Malformed JSON/);
+    await writeFile(schemaPath, original, "utf8");
   });
 });
 

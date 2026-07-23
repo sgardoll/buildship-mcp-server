@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -90,15 +91,29 @@ export async function labelsDir(): Promise<string> {
 }
 
 export async function readJson<T = unknown>(file: string): Promise<T> {
-  const raw = await fs.readFile(file, "utf8");
-  return JSON.parse(raw) as T;
+  let raw: string;
+  try {
+    raw = await fs.readFile(file, "utf8");
+  } catch (error) {
+    throw new Error(`Unable to read required file ${file}: ${(error as Error).message}`);
+  }
+  try {
+    return JSON.parse(raw) as T;
+  } catch (error) {
+    throw new Error(`Malformed JSON in ${file}: ${(error as Error).message}`);
+  }
 }
 
 async function writeAtomic(file: string, content: string): Promise<void> {
   await fs.mkdir(path.dirname(file), { recursive: true });
-  const tmp = `${file}.${process.pid}.tmp`;
-  await fs.writeFile(tmp, content, "utf8");
-  await fs.rename(tmp, file);
+  const tmp = `${file}.${process.pid}.${randomUUID()}.tmp`;
+  try {
+    await fs.writeFile(tmp, content, "utf8");
+    await fs.rename(tmp, file);
+  } catch (error) {
+    await fs.rm(tmp, { force: true }).catch(() => undefined);
+    throw error;
+  }
 }
 
 export async function writeJson(file: string, value: unknown): Promise<void> {
@@ -111,7 +126,112 @@ export async function writeText(file: string, value: string): Promise<void> {
 }
 
 export async function readText(file: string): Promise<string> {
-  return fs.readFile(file, "utf8");
+  try {
+    return await fs.readFile(file, "utf8");
+  } catch (error) {
+    throw new Error(`Unable to read required file ${file}: ${(error as Error).message}`);
+  }
+}
+
+export interface TransactionFile {
+  file: string;
+  content: string;
+}
+
+interface FileSnapshot {
+  file: string;
+  existed: boolean;
+  content?: Buffer;
+}
+
+let transactionTail: Promise<void> = Promise.resolve();
+
+/**
+ * Atomically apply a related set of file changes. Each individual replacement
+ * uses temp-file + rename, and any write or post-write validation failure
+ * restores every prior file (or removes newly created files/directories).
+ */
+export async function writeFilesTransaction(
+  files: TransactionFile[],
+  validate?: () => Promise<void>,
+): Promise<void> {
+  const previous = transactionTail;
+  let release: () => void = () => undefined;
+  transactionTail = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await previous;
+  try {
+    await writeFilesTransactionUnlocked(files, validate);
+  } finally {
+    release();
+  }
+}
+
+async function writeFilesTransactionUnlocked(
+  files: TransactionFile[],
+  validate?: () => Promise<void>,
+): Promise<void> {
+  const unique = new Set(files.map(({ file }) => path.resolve(file)));
+  if (unique.size !== files.length) {
+    throw new Error("A file transaction cannot contain duplicate paths.");
+  }
+
+  const snapshots: FileSnapshot[] = [];
+  const createdDirectories = new Set<string>();
+  for (const { file } of files) {
+    const resolved = path.resolve(file);
+    try {
+      snapshots.push({ file: resolved, existed: true, content: await fs.readFile(resolved) });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      snapshots.push({ file: resolved, existed: false });
+      let dir = path.dirname(resolved);
+      while (!(await exists(dir))) {
+        createdDirectories.add(dir);
+        const parent = path.dirname(dir);
+        if (parent === dir) break;
+        dir = parent;
+      }
+    }
+  }
+
+  try {
+    for (const { file, content } of files) {
+      await writeAtomic(path.resolve(file), content);
+    }
+    await validate?.();
+  } catch (error) {
+    const rollbackErrors: string[] = [];
+    for (const snapshot of [...snapshots].reverse()) {
+      try {
+        if (snapshot.existed) {
+          await writeAtomic(snapshot.file, snapshot.content?.toString("utf8") ?? "");
+        } else {
+          await fs.rm(snapshot.file, { force: true });
+        }
+      } catch (rollbackError) {
+        rollbackErrors.push(`${snapshot.file}: ${(rollbackError as Error).message}`);
+      }
+    }
+    for (const dir of [...createdDirectories].sort((a, b) => b.length - a.length)) {
+      try {
+        await fs.rmdir(dir);
+      } catch (rollbackError) {
+        if (
+          !["ENOENT", "ENOTEMPTY"].includes((rollbackError as NodeJS.ErrnoException).code ?? "")
+        ) {
+          rollbackErrors.push(`${dir}: ${(rollbackError as Error).message}`);
+        }
+      }
+    }
+    if (rollbackErrors.length > 0) {
+      throw new Error(
+        `${(error as Error).message}; rollback was incomplete: ${rollbackErrors.join("; ")}`,
+      );
+    }
+    throw error;
+  }
 }
 
 export async function pathExists(p: string): Promise<boolean> {
