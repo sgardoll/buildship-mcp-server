@@ -396,7 +396,7 @@ Each workflow lives under `workflows/<folder>/` with six files:
 
 - `schema.json` — id, name, description, runtime version, node values, variables
 - `meta.json` — git integration version, node ID-to-label mapping
-- `nodes.json` — ordered array of node entries (each with id, type, label, and optional library ref/version)
+- `nodes.json` — ordered array of complete deployable node definitions (source, schemas, dependencies, metadata)
 - `inputs.json` — workflow-level input parameters
 - `output.json` — workflow-level output schema
 - `triggers.json` — how the workflow is initiated (REST endpoint, cron, etc.)
@@ -413,14 +413,15 @@ Plus `flow-id-to-label/<workflowId>.txt` mapping the workflow's UUID to a human-
 | --- | --- |
 | `list_nodes` | List custom node ids, versions, and labels. Optional `search` substring. |
 | `get_node` | Read `schema.json`, `inputs.json`, `output.json`, and `main.ts` for a node version. |
-| `create_node` | Scaffold a new node directory (`nodes/<id>/<version>/`) with all five files and a label entry. |
-| `update_node_file` | Replace a single file (`main.ts`, `inputs.json`, `output.json`, or `schema.json`) on an existing node version; JSON files are parsed before write. |
+| `create_node` | Create and type-check a node transactionally; every file is rolled back if deployment validation fails. |
+| `update_node_file` | Replace one node file, then type-check and validate the complete node; restore the prior file on failure. |
 | `list_workflows` | List workflow folders with id, name, and description. |
 | `get_workflow` | Read all six workflow JSON files for a given folder. |
-| `create_workflow` | Scaffold a new workflow with `meta.json`, `schema.json`, `nodes.json`, `inputs.json`, `output.json`, `triggers.json`, plus a `flow-id-to-label/<workflowId>.txt`. Optionally seeds a REST trigger and any number of node entries; always appends a Flow Output node. |
-| `add_node_to_workflow` | Append a node entry to an existing workflow's `nodes.json` and (optionally) sync `meta.nodeIdToLabel` and `schema.nodeValues`. |
+| `create_workflow` | Create a transactionally validated workflow with a complete REST v2 trigger, fully materialized nodes, one Flow Output node, and its label mapping. |
+| `add_node_to_workflow` | Materialize a complete custom/control node and atomically update `nodes.json`, `meta.json`, and `schema.json`. |
 | `set_flow_label` / `get_flow_label` | Read or write a single `flow-id-to-label/<id>.txt` file. |
-| `sync_to_git` | Stage, commit, and optionally push changes in the BuildShip repo's git working tree. Use after creating or updating nodes/workflows to sync to GitHub. |
+| `validate_deployment` | Validate one node, one workflow, or the whole repo: required files, JSON schemas, TypeScript, references, bindings, and deployable serialization. |
+| `sync_to_git` | Validate changed artifacts, stage only BuildShip-managed paths, commit, and optionally push. |
 
 ### Example: create a node
 
@@ -437,7 +438,7 @@ Plus `flow-id-to-label/<workflowId>.txt` mapping the workflow's UUID to a human-
     },
     "required": ["name"],
     "output": { "type": "string", "title": "Greeting" },
-    "mainTs": "export default async function ({ name, loud }: NodeInputs): NodeOutput {\n  const out = `Hello, ${name}`;\n  return loud ? out.toUpperCase() + '!' : out;\n}\n"
+    "mainTs": "export default async function ({ name, loud }: NodeInputs): Promise<NodeOutput> {\n  const out = `Hello, ${name}`;\n  return loud ? out.toUpperCase() + '!' : out;\n}\n"
   }
 }
 ```
@@ -464,7 +465,7 @@ Plus `flow-id-to-label/<workflowId>.txt` mapping the workflow's UUID to a human-
 }
 ```
 
-The server picks a folder name like `users-greet-aB3x`, generates a 20-char workflow id, writes all six workflow files, registers `flow-id-to-label/<workflowId>.txt`, and appends a Flow Output node for you.
+The server picks a folder name like `users-greet-aB3x`, generates a 20-char workflow id, embeds the complete `greet-user` definition, writes a complete deployable REST trigger, appends one Flow Output node, and validates every file/reference before committing the transaction.
 
 ### Example: sync changes to GitHub
 
@@ -478,7 +479,7 @@ The server picks a folder name like `users-greet-aB3x`, generates a 20-char work
 }
 ```
 
-The server stages all changes in the BuildShip repo, commits with your message, and pushes to GitHub. Set `push: false` to commit only (e.g., to batch changes before pushing). Push failures are soft — the commit succeeds even if the remote is unreachable.
+The server validates changed nodes/workflows, stages only `nodes/`, `workflows/`, and `flow-id-to-label/`, commits with your message, and pushes to GitHub. Set `push: false` to commit only. If push fails, the result explicitly reports the locally created commit and `pushError` so the same commit can be retried.
 
 ---
 
@@ -503,11 +504,14 @@ Once configured, ask your AI assistant:
 ## Safety Guardrails
 
 - Refuses to overwrite an existing node version or workflow folder unless you pass `overwrite: true`.
-- Validates JSON content before writing JSON files via `update_node_file`.
-- Enforces lowercase-kebab-case node ids and SemVer versions.
+- Strictly reads every required artifact; missing or malformed files are errors rather than `null`, `[]`, or `{}` fallbacks.
+- Type-checks `main.ts` against generated `NodeInputs`/`NodeOutput` types and validates schema compatibility and workflow references.
+- Rejects skeletal/library workflow nodes and emits complete BuildShip REST v2 trigger/node definitions.
+- Rolls back related files as one transaction when a write or deployment validation fails.
+- Enforces traversal-safe node ids, workflow folders, label ids, and SemVer versions.
 - All path operations use `safeJoin` — path traversal via `..` or absolute paths is blocked.
 - All git operations use `execFileSync` with args array (no shell) — no shell injection risk.
-- Push failures are soft — the commit succeeds even if the remote is unreachable or authentication fails.
+- Rejects pre-existing staged changes and never stages unrelated repository files.
 - Refuses to start if the repo root cannot be located, so the agent gets a clear error rather than scribbling files in `cwd`.
 
 ---
@@ -519,7 +523,7 @@ npm run dev        # tsc --watch
 npm run typecheck  # tsc --noEmit
 npm run build      # tsc → dist/index.js
 npm run check      # resolve BUILDSHIP_REPO and exit
-npm test           # tsc + node --test (42 tests)
+npm test           # tsc + complete node:test suite
 npm run lint       # biome check src test scripts
 npm run format     # biome format --write src test scripts
 ```

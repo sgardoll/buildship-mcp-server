@@ -16,6 +16,7 @@ import {
   UpdateNodeFileSchema,
   updateNodeFile,
 } from "./tools/nodes.js";
+import { ValidateDeploymentSchema, validateDeployment } from "./tools/validation.js";
 import {
   AddNodeToWorkflowSchema,
   addNodeToWorkflow,
@@ -83,14 +84,14 @@ const TOOLS: ToolDef[] = [
   {
     name: "create_workflow",
     description:
-      "Create a new workflow directory with schema.json, meta.json, nodes.json, inputs.json, output.json, and triggers.json. Optionally seeds a REST trigger and a list of node entries; always appends a Flow Output node.",
+      "Create a deployment-valid workflow transactionally. Embeds complete custom/control node definitions, a complete REST v2 trigger, and one Flow Output node; rolls back every file if validation fails.",
     schema: CreateWorkflowSchema,
     handler: createWorkflow,
   },
   {
     name: "add_node_to_workflow",
     description:
-      "Append a node entry to an existing workflow's nodes.json (and optionally update meta.nodeIdToLabel and schema.nodeValues).",
+      "Materialize a complete custom/control node into a workflow, validate references and schemas, and atomically roll back all workflow files on failure.",
     schema: AddNodeToWorkflowSchema,
     handler: addNodeToWorkflow,
   },
@@ -107,9 +108,16 @@ const TOOLS: ToolDef[] = [
     handler: getLabel,
   },
   {
+    name: "validate_deployment",
+    description:
+      "Run BuildShip deployment validation for a node, workflow, or the complete repository: strict required-file reads, JSON/schema checks, main.ts type-checking, node/reference checks, binding compatibility, and deployable trigger/node serialization.",
+    schema: ValidateDeploymentSchema,
+    handler: validateDeployment,
+  },
+  {
     name: "sync_to_git",
     description:
-      "Stage, commit, and optionally push changes in the BuildShip repo's git working tree. Use after creating or updating nodes/workflows to sync changes to GitHub via BuildShip's GitHub Integration.",
+      "Validate changed BuildShip artifacts, stage only BuildShip-managed paths, commit, and optionally push via GitHub Integration.",
     schema: SyncToGitSchema,
     handler: syncToGit,
   },

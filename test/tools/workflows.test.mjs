@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { after, before, describe, it } from "node:test";
 import { resetRepoRootCache } from "../../dist/repo.js";
+import { createNode } from "../../dist/tools/nodes.js";
 import {
   addNodeToWorkflow,
   createWorkflow,
@@ -14,6 +15,7 @@ import {
 } from "../../dist/tools/workflows.js";
 
 let tempRepo;
+let createdFolder;
 
 before(async () => {
   tempRepo = await mkdtemp(path.join(tmpdir(), "bs-wf-"));
@@ -22,6 +24,15 @@ before(async () => {
   await mkdir(path.join(tempRepo, "flow-id-to-label"), { recursive: true });
   process.env.BUILDSHIP_REPO = tempRepo;
   resetRepoRootCache();
+  await createNode({
+    id: "greet-user",
+    label: "Greet User",
+    inputs: { name: { type: "string" } },
+    output: { type: "string" },
+    mainTs:
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: intentional generated TypeScript template literal
+      "export default async function ({ name }: NodeInputs): Promise<NodeOutput> {\n  return `Hello ${name}`;\n}\n",
+  });
 });
 
 after(async () => {
@@ -29,8 +40,6 @@ after(async () => {
 });
 
 describe("Workflow tools — valid operations", () => {
-  let createdFolder;
-
   it("creates a workflow with REST trigger", async () => {
     const result = await createWorkflow({
       name: "test-workflow",
@@ -51,6 +60,22 @@ describe("Workflow tools — valid operations", () => {
     assert.ok(result.flowOutputId);
     assert.ok(result.nodeCount >= 2); // user node + Flow Output
     createdFolder = result.folder;
+
+    const workflow = await getWorkflow({ folder: createdFolder });
+    const trigger = workflow.triggers[0];
+    assert.equal(trigger.type, "http-v2");
+    assert.equal(trigger._libRef.version, "2.0.2");
+    assert.ok(trigger._libRef.integrity);
+    assert.ok(trigger._libRef.src);
+    assert.ok(trigger.data);
+    assert.ok(trigger.response);
+    assert.ok(trigger.lifeCycleFunctions.includes("onExecution"));
+    assert.ok(trigger.script.includes("onExecution"));
+    const embedded = workflow.nodes.find((node) => node.id !== result.flowOutputId);
+    assert.ok(embedded.script);
+    assert.ok(embedded.inputs);
+    assert.ok(embedded.output);
+    assert.equal("nodeId" in embedded, false);
   });
 
   it("gets the created workflow with all files", async () => {
@@ -79,6 +104,7 @@ describe("Workflow tools — valid operations", () => {
       node: {
         type: "script",
         label: "Extra Step",
+        nodeId: "greet-user",
       },
     });
     assert.ok(result.addedId);
@@ -110,9 +136,13 @@ describe("Workflow tools — overwrite protection", () => {
   });
 
   it("creates with overwrite: true replaces workflow", async () => {
-    const _first = await createWorkflow({ name: "overwrite-test-2" });
+    const first = await createWorkflow({
+      name: "overwrite-test-2",
+      folderName: "overwrite-test-2-X1Y2",
+    });
     const result = await createWorkflow({
       name: "overwrite-test-2",
+      folderName: first.folder,
       description: "Replaced",
       overwrite: true,
     });
@@ -123,38 +153,29 @@ describe("Workflow tools — overwrite protection", () => {
 
 describe("Workflow tools — path traversal protection", () => {
   it("blocks getWorkflow with ../../etc folder", async () => {
-    await assert.rejects(
-      getWorkflow({ folder: "../../etc" }),
-      /Path escapes the allowed directory/,
-    );
+    await assert.rejects(getWorkflow({ folder: "../../etc" }), /Invalid/);
   });
 
-  it("blocks getWorkflow with absolute path folder (treated as relative, not found)", async () => {
-    await assert.rejects(getWorkflow({ folder: "/etc" }), /Workflow not found/);
+  it("rejects absolute workflow folders at schema validation", async () => {
+    await assert.rejects(getWorkflow({ folder: "/etc" }), /Invalid/);
   });
 
   it("blocks addNodeToWorkflow with ../../etc folder", async () => {
     await assert.rejects(
       addNodeToWorkflow({
         folder: "../../etc",
-        node: { type: "script" },
+        node: { type: "script", nodeId: "greet-user" },
       }),
-      /Path escapes the allowed directory/,
+      /Invalid/,
     );
   });
 
   it("blocks setLabel with ../../etc id", async () => {
-    await assert.rejects(
-      setLabel({ id: "../../etc/evil", label: "evil" }),
-      /Path escapes the allowed directory/,
-    );
+    await assert.rejects(setLabel({ id: "../../etc/evil", label: "evil" }), /Invalid/);
   });
 
   it("blocks getLabel with ../../etc id", async () => {
-    await assert.rejects(
-      getLabel({ id: "../../etc/passwd" }),
-      /Path escapes the allowed directory/,
-    );
+    await assert.rejects(getLabel({ id: "../../etc/passwd" }), /Invalid/);
   });
 
   it("blocks setLabel with .ssh path (authorized_keys attack)", async () => {
@@ -163,7 +184,120 @@ describe("Workflow tools — path traversal protection", () => {
         id: "../../.ssh/authorized_keys",
         label: "ssh-ed25519 AAAA... attacker@host",
       }),
-      /Path escapes the allowed directory/,
+      /Invalid/,
     );
+  });
+
+  it("rejects malformed REST endpoint paths", async () => {
+    await assert.rejects(
+      createWorkflow({
+        name: "bad rest path",
+        trigger: { path: "missing-leading-slash" },
+      }),
+      /REST path must start with/,
+    );
+  });
+});
+
+describe("Workflow tools — semantic validation and rollback", () => {
+  it("rejects the non-deployable library pseudo-type", async () => {
+    await assert.rejects(
+      createWorkflow({
+        name: "library-node",
+        folderName: "library-node-X1Y2",
+        nodes: [{ type: "library", nodeId: "greet-user" }],
+      }),
+      /Invalid enum value/,
+    );
+  });
+
+  it("tracks nested control-node ids and values as real workflow references", async () => {
+    const branchId = "44444444-4444-4444-8444-444444444444";
+    const nestedOutputId = "55555555-5555-4555-8555-555555555555";
+    const result = await createWorkflow({
+      name: "nested control",
+      folderName: "nested-control-X1Y2",
+      nodes: [
+        {
+          id: branchId,
+          type: "branch",
+          definition: {
+            condition: true,
+            // biome-ignore lint/suspicious/noThenProperty: BuildShip branch schema requires `then`
+            then: [{ id: nestedOutputId, type: "output", label: "Nested Output" }],
+            else: [],
+          },
+          nestedValues: {
+            [nestedOutputId]: {
+              _$bsCacheMaxAge_: 0,
+              _$bsStatusCode_: "200",
+              _$lastNodeOutput_: {},
+            },
+          },
+        },
+      ],
+    });
+    const workflow = await getWorkflow({ folder: result.folder });
+    assert.ok(nestedOutputId in workflow.schema.nodeValues);
+    assert.ok(nestedOutputId in workflow.meta.nodeIdToLabel);
+  });
+
+  it("rejects incompatible bindings and removes all newly written workflow files", async () => {
+    await createNode({
+      id: "string-producer",
+      label: "String Producer",
+      output: { type: "object", properties: { result: { type: "string" } } },
+      mainTs:
+        'export default async function (): Promise<NodeOutput> {\n  return { result: "ok" };\n}\n',
+    });
+    await createNode({
+      id: "number-consumer",
+      label: "Number Consumer",
+      inputs: { count: { type: "number" } },
+      required: ["count"],
+      output: { type: "object" },
+      mainTs:
+        "export default async function ({ count }: NodeInputs): Promise<NodeOutput> {\n  return { count };\n}\n",
+    });
+    const producerId = "11111111-1111-4111-8111-111111111111";
+    const consumerId = "22222222-2222-4222-8222-222222222222";
+    const folder = "incompatible-binding-X1Y2";
+    await assert.rejects(
+      createWorkflow({
+        name: "incompatible binding",
+        folderName: folder,
+        nodes: [
+          { id: producerId, nodeId: "string-producer" },
+          {
+            id: consumerId,
+            nodeId: "number-consumer",
+            values: { count: { _$keys_: [producerId, "result"] } },
+          },
+        ],
+      }),
+      /incompatible binding/,
+    );
+    await assert.rejects(access(path.join(tempRepo, "workflows", folder)));
+  });
+
+  it("rejects missing required node input bindings", async () => {
+    const folder = "missing-required-X1Y2";
+    await assert.rejects(
+      createWorkflow({
+        name: "missing required",
+        folderName: folder,
+        nodes: [{ nodeId: "number-consumer" }],
+      }),
+      /required input .*count.* has no binding or default/,
+    );
+    await assert.rejects(access(path.join(tempRepo, "workflows", folder)));
+  });
+
+  it("does not mask malformed required workflow JSON", async () => {
+    const nodesPath = path.join(tempRepo, "workflows", createdFolder, "nodes.json");
+    const original = await readFile(nodesPath, "utf8");
+    await writeFile(nodesPath, "{ malformed", "utf8");
+    await assert.rejects(getWorkflow({ folder: createdFolder }), /Malformed JSON/);
+    await writeFile(nodesPath, original, "utf8");
   });
 });
