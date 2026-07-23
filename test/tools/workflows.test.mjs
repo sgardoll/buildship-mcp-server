@@ -71,6 +71,8 @@ describe("Workflow tools — valid operations", () => {
     assert.ok(trigger.response);
     assert.ok(trigger.lifeCycleFunctions.includes("onExecution"));
     assert.ok(trigger.script.includes("onExecution"));
+    assert.ok(trigger.script.includes("requestPath: request.path"));
+    assert.equal(trigger.script.includes("    path: request.path"), false);
     const embedded = workflow.nodes.find((node) => node.id !== result.flowOutputId);
     assert.ok(embedded.script);
     assert.ok(embedded.inputs);

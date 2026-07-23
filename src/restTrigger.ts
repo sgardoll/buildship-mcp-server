@@ -54,7 +54,7 @@ const onExecution = async (
     headers: request.headers,
     body: body ?? {},
     params: request.params,
-    path: request.path,
+    requestPath: request.path,
   };
 };
 

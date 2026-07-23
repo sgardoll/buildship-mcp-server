@@ -14,7 +14,7 @@ import {
 const NODE_ID_RE = /^[a-z0-9][a-z0-9-]*$/;
 const WORKFLOW_FOLDER_RE = /^[a-z0-9][A-Za-z0-9-]*$/;
 const SEMVER_RE = /^\d+\.\d+\.\d+$/;
-const UUID_RE = /\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/gi;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const DEPLOYABLE_NODE_TYPES = new Set([
   "script",
   "output",
@@ -395,6 +395,56 @@ function walkBindings(value: unknown, visit: (binding: JsonObject) => void): voi
   for (const child of Object.values(value)) walkBindings(child, visit);
 }
 
+function unwrapParentheses(expression: ts.Expression): ts.Expression {
+  let current = expression;
+  while (ts.isParenthesizedExpression(current)) current = current.expression;
+  return current;
+}
+
+function isCtxRootAccess(expression: ts.Expression): boolean {
+  const candidate = unwrapParentheses(expression);
+  if (ts.isPropertyAccessExpression(candidate)) {
+    const owner = unwrapParentheses(candidate.expression);
+    return ts.isIdentifier(owner) && owner.text === "ctx" && candidate.name.text === "root";
+  }
+  if (ts.isElementAccessExpression(candidate)) {
+    const owner = unwrapParentheses(candidate.expression);
+    return (
+      ts.isIdentifier(owner) &&
+      owner.text === "ctx" &&
+      candidate.argumentExpression !== undefined &&
+      ts.isStringLiteralLike(candidate.argumentExpression) &&
+      candidate.argumentExpression.text === "root"
+    );
+  }
+  return false;
+}
+
+function expressionNodeReferences(expression: string): string[] {
+  const source = ts.createSourceFile(
+    "buildship-expression.ts",
+    `const __buildshipExpression = (${expression});`,
+    ts.ScriptTarget.ES2022,
+    true,
+    ts.ScriptKind.TS,
+  );
+  const references = new Set<string>();
+  const visit = (node: ts.Node) => {
+    if (
+      ts.isElementAccessExpression(node) &&
+      node.argumentExpression !== undefined &&
+      ts.isStringLiteralLike(node.argumentExpression) &&
+      UUID_RE.test(node.argumentExpression.text) &&
+      isCtxRootAccess(node.expression)
+    ) {
+      references.add(node.argumentExpression.text);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return [...references];
+}
+
 function flattenWorkflowNodes(rawNodes: unknown[]): unknown[] {
   const flattened: unknown[] = [];
   const visitList = (list: unknown[]) => {
@@ -450,6 +500,7 @@ async function validateWorkflowAt(root: string, folder: string): Promise<Validat
   const ids = new Set<string>();
   const nodeById = new Map<string, JsonObject>();
   const triggerById = new Map<string, JsonObject>();
+  const restTriggerIds = new Set<string>();
   const outputs = new Map<string, JsonObject>();
   let outputNodes = 0;
   for (const [index, rawNode] of flattenedNodes.entries()) {
@@ -502,19 +553,27 @@ async function validateWorkflowAt(root: string, folder: string): Promise<Validat
       ids.add(id);
       triggerById.set(id, trigger);
     }
-    const libRef = asObject(trigger._libRef, `${target}/trigger:${id}._libRef`, errors);
-    if (
-      trigger.type !== "http-v2" ||
-      libRef.libNodeRefId !== "@buildship/http-v2" ||
-      typeof libRef.integrity !== "string" ||
-      typeof libRef.src !== "string"
-    ) {
-      errors.push(issue(target, `trigger ${id || index} is not a complete REST v2 definition.`));
+    const rawLibRef = isObject(trigger._libRef) ? trigger._libRef : {};
+    const isRestTrigger =
+      trigger.type === "http-v2" || rawLibRef.libNodeRefId === "@buildship/http-v2";
+    if (isRestTrigger) {
+      if (id) restTriggerIds.add(id);
+      const libRef = asObject(trigger._libRef, `${target}/trigger:${id}._libRef`, errors);
+      if (
+        trigger.type !== "http-v2" ||
+        libRef.libNodeRefId !== "@buildship/http-v2" ||
+        typeof libRef.integrity !== "string" ||
+        typeof libRef.src !== "string"
+      ) {
+        errors.push(issue(target, `trigger ${id || index} is not a complete REST v2 definition.`));
+      }
+      if (!("response" in trigger)) {
+        errors.push(issue(target, `REST trigger ${id || index} is missing \`response\`.`));
+      }
     }
     for (const requiredField of [
       "config",
       "data",
-      "response",
       "dependencies",
       "lifeCycleFunctions",
       "meta",
@@ -542,6 +601,7 @@ async function validateWorkflowAt(root: string, folder: string): Promise<Validat
     }
   }
   for (const [triggerId, trigger] of triggerById) {
+    if (!restTriggerIds.has(triggerId)) continue;
     const values = isObject(nodeValues[triggerId]) ? nodeValues[triggerId] : {};
     const config = isObject(trigger.config) ? trigger.config : {};
     const properties = isObject(config.properties) ? config.properties : {};
@@ -666,7 +726,7 @@ async function validateWorkflowAt(root: string, folder: string): Promise<Validat
               }
             }
           }
-          for (const reference of binding._$expression_.match(UUID_RE) ?? []) {
+          for (const reference of expressionNodeReferences(binding._$expression_)) {
             if (!ids.has(reference)) {
               errors.push(issue(target, `expression references unknown node id \`${reference}\`.`));
             }
