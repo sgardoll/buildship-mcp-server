@@ -89,6 +89,21 @@ For other tools (Claude Desktop, Cursor, Zed, VS Code, Continue, OpenCode, Cline
 
 ---
 
+## Updating an existing install
+
+The server runs directly from your cloned checkout; there is no global npm package to upgrade. Update the clone, reinstall its locked dependencies, and rebuild `dist/`:
+
+```bash
+cd /absolute/path/to/buildship-mcp-server
+git pull --ff-only
+npm ci
+BUILDSHIP_REPO=/absolute/path/to/your/buildship-repo npm run check
+```
+
+`npm ci` runs the `prepare` hook, which rebuilds `dist/`. Fully quit and restart your MCP client afterward so it starts the updated server process.
+
+---
+
 ## One-Click Install
 
 After you've cloned + built the server (Quick Start steps 1–3 above), click your client's button. It opens an install dialog pre-filled with the BuildShip MCP config — you just edit the two placeholder paths.
