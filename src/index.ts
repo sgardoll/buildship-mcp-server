@@ -1,10 +1,16 @@
 #!/usr/bin/env node
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
+import {
+  CallToolRequestSchema,
+  ErrorCode,
+  ListToolsRequestSchema,
+  McpError,
+  type ToolAnnotations,
+} from "@modelcontextprotocol/sdk/types.js";
 import { ZodError, type z } from "zod";
 import { zodToJsonSchema } from "./jsonSchema.js";
-import { resolveRepoRoot } from "./repo.js";
+import { resolveRepoRoot, withRepoMutationLock } from "./repo.js";
 import { SyncToGitSchema, syncToGit } from "./tools/git.js";
 import {
   CreateNodeInputSchema,
@@ -36,8 +42,17 @@ interface ToolDef {
   name: string;
   description: string;
   schema: z.ZodTypeAny;
+  annotations: ToolAnnotations;
   handler: (input: unknown) => Promise<unknown>;
 }
+
+const READ_ONLY: ToolAnnotations = { readOnlyHint: true, openWorldHint: false };
+const LOCAL_MUTATION: ToolAnnotations = {
+  readOnlyHint: false,
+  destructiveHint: true,
+  idempotentHint: false,
+  openWorldHint: false,
+};
 
 const TOOLS: ToolDef[] = [
   {
@@ -45,6 +60,7 @@ const TOOLS: ToolDef[] = [
     description:
       "List BuildShip custom nodes in the repo. Optional `search` filters by id substring.",
     schema: ListNodesSchema,
+    annotations: READ_ONLY,
     handler: listNodes,
   },
   {
@@ -52,6 +68,7 @@ const TOOLS: ToolDef[] = [
     description:
       "Read a node's schema.json, inputs.json, output.json, and main.ts. Defaults to the highest version when `version` is omitted.",
     schema: GetNodeSchema,
+    annotations: READ_ONLY,
     handler: getNode,
   },
   {
@@ -59,6 +76,7 @@ const TOOLS: ToolDef[] = [
     description:
       "Create a new custom node directory under nodes/<id>/<version>/ with schema.json, inputs.json, output.json, meta.json, and main.ts. Also writes a flow-id-to-label entry.",
     schema: CreateNodeInputSchema,
+    annotations: LOCAL_MUTATION,
     handler: createNode,
   },
   {
@@ -66,12 +84,14 @@ const TOOLS: ToolDef[] = [
     description:
       "Replace one of main.ts, inputs.json, output.json, or schema.json for an existing node version. JSON files are validated before writing.",
     schema: UpdateNodeFileSchema,
+    annotations: LOCAL_MUTATION,
     handler: updateNodeFile,
   },
   {
     name: "list_workflows",
     description: "List BuildShip workflows in the repo with their id, name, and description.",
     schema: ListWorkflowsSchema,
+    annotations: READ_ONLY,
     handler: listWorkflows,
   },
   {
@@ -79,46 +99,53 @@ const TOOLS: ToolDef[] = [
     description:
       "Read a workflow's schema.json, meta.json, nodes.json, inputs.json, output.json, and triggers.json by folder name.",
     schema: GetWorkflowSchema,
+    annotations: READ_ONLY,
     handler: getWorkflow,
   },
   {
     name: "create_workflow",
     description:
-      "Create a deployment-valid workflow transactionally. Embeds complete custom/control node definitions, a complete REST v2 trigger, and one Flow Output node; rolls back every file if validation fails.",
+      "Create a workflow with local structural and TypeScript preflight checks. Embeds custom/control node definitions, a REST v2 trigger, and one Flow Output node; restores prior files if validation fails. Does not deploy or verify BuildShip runtime acceptance.",
     schema: CreateWorkflowSchema,
+    annotations: LOCAL_MUTATION,
     handler: createWorkflow,
   },
   {
     name: "add_node_to_workflow",
     description:
-      "Materialize a complete custom/control node into a workflow, validate references and schemas, and atomically roll back all workflow files on failure.",
+      "Materialize a custom/control node into a workflow, validate references and schemas locally, and restore prior workflow files on failure.",
     schema: AddNodeToWorkflowSchema,
+    annotations: LOCAL_MUTATION,
     handler: addNodeToWorkflow,
   },
   {
     name: "set_flow_label",
     description: "Write or overwrite a flow-id-to-label/<id>.txt file with a human-readable label.",
     schema: SetLabelSchema,
+    annotations: LOCAL_MUTATION,
     handler: setLabel,
   },
   {
     name: "get_flow_label",
     description: "Read the human-readable label associated with a workflow or node id.",
     schema: GetLabelSchema,
+    annotations: READ_ONLY,
     handler: getLabel,
   },
   {
     name: "validate_deployment",
     description:
-      "Run BuildShip deployment validation for a node, workflow, or the complete repository: strict required-file reads, JSON/schema checks, main.ts type-checking, node/reference checks, binding compatibility, and deployable trigger/node serialization.",
+      "Run local deployment preflight for a node, workflow, or the complete repository: required files, JSON/schema checks, main.ts type-checking, references, bindings, and trigger/node serialization. Does not verify dependency availability, deployment, or runtime behavior in BuildShip.",
     schema: ValidateDeploymentSchema,
+    annotations: READ_ONLY,
     handler: validateDeployment,
   },
   {
     name: "sync_to_git",
     description:
-      "Validate changed BuildShip artifacts, stage only BuildShip-managed paths, commit, and optionally push via GitHub Integration.",
+      "Validate changed BuildShip artifacts locally, stage only BuildShip-managed paths, commit, and optionally push to the configured Git remote. A push can trigger BuildShip GitHub Integration; deployment success is not verified.",
     schema: SyncToGitSchema,
+    annotations: { ...LOCAL_MUTATION, openWorldHint: true },
     handler: syncToGit,
   },
 ];
@@ -153,21 +180,28 @@ async function main() {
       name: t.name,
       description: t.description,
       inputSchema: zodToJsonSchema(t.schema),
+      annotations: t.annotations,
     })),
   }));
 
   server.setRequestHandler(CallToolRequestSchema, async (req) => {
     const tool = TOOLS.find((t) => t.name === req.params.name);
     if (!tool) {
-      return {
-        isError: true,
-        content: [{ type: "text", text: `Unknown tool: ${req.params.name}` }],
-      };
+      throw new McpError(ErrorCode.InvalidParams, `Unknown tool: ${req.params.name}`);
     }
 
     try {
-      const result = await tool.handler(req.params.arguments ?? {});
+      // Readers share the mutation lock so a concurrent call cannot expose
+      // partially written files while a transaction is awaiting validation.
+      const result = await withRepoMutationLock(() => tool.handler(req.params.arguments ?? {}));
+      const pushFailed =
+        tool.name === "sync_to_git" &&
+        typeof result === "object" &&
+        result !== null &&
+        "pushError" in result &&
+        typeof result.pushError === "string";
       return {
+        ...(pushFailed ? { isError: true } : {}),
         content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
       };
     } catch (err) {

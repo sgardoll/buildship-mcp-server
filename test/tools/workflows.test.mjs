@@ -128,6 +128,34 @@ describe("Workflow tools — valid operations", () => {
 });
 
 describe("Workflow tools — overwrite protection", () => {
+  it("allows only one concurrent creation of the same workflow without overwrite", async () => {
+    const folderName = "concurrent-create-X1Y2";
+    const results = await Promise.allSettled([
+      createWorkflow({ name: "First", folderName }),
+      createWorkflow({ name: "Second", folderName }),
+    ]);
+    assert.equal(results.filter((result) => result.status === "fulfilled").length, 1);
+    const rejected = results.find((result) => result.status === "rejected");
+    assert.match(rejected.reason.message, /already exists/);
+    const workflow = await getWorkflow({ folder: folderName });
+    assert.equal(workflow.schema.name, "First");
+  });
+
+  it("retains both concurrent node additions and their metadata", async () => {
+    const { folder } = await createWorkflow({ name: "Concurrent additions" });
+    const results = await Promise.all([
+      addNodeToWorkflow({ folder, node: { nodeId: "greet-user", label: "First addition" } }),
+      addNodeToWorkflow({ folder, node: { nodeId: "greet-user", label: "Second addition" } }),
+    ]);
+    const workflow = await getWorkflow({ folder });
+    for (const { addedId } of results) {
+      assert.ok(workflow.nodes.some((node) => node.id === addedId));
+      assert.ok(addedId in workflow.meta.nodeIdToLabel);
+      assert.ok(addedId in workflow.schema.nodeValues);
+    }
+    assert.equal(workflow.nodes.length, 3);
+  });
+
   it("refuses to create existing workflow without overwrite", async () => {
     // Use folderName to force the same folder for both calls
     await createWorkflow({ name: "overwrite-test", folderName: "overwrite-test-X1Y2" });

@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
+import path from "node:path";
 import { z } from "zod";
-import { resolveRepoRoot } from "../repo.js";
+import { assertRepoPath, resolveRepoRoot, withRepoMutationLock } from "../repo.js";
 import { assertDeploymentValid, validateChangedBuildshipPaths } from "./validation.js";
 
 const BUILDSHIP_PATHS = ["nodes", "workflows", "flow-id-to-label"];
@@ -25,6 +26,10 @@ export type SyncToGitInput = z.infer<typeof SyncToGitSchema>;
  */
 export async function syncToGit(raw: unknown) {
   const { message, push } = SyncToGitSchema.parse(raw);
+  return withRepoMutationLock(() => syncToGitUnlocked(message, push));
+}
+
+async function syncToGitUnlocked(message: string, push: boolean) {
   const root = await resolveRepoRoot();
 
   // Verify this is a git repository.
@@ -40,6 +45,13 @@ export async function syncToGit(raw: unknown) {
     );
   }
 
+  // Porcelain v1 reports paths from the Git root even when BuildShip lives in
+  // a subdirectory of a larger repository. Validation and pathspecs use cwd.
+  const gitPrefix = execFileSync("git", ["rev-parse", "--show-prefix"], {
+    cwd: root,
+    encoding: "utf8",
+  }).replace(/\n$/, "");
+
   try {
     execFileSync("git", ["diff", "--cached", "--quiet", "--"], {
       cwd: root,
@@ -54,14 +66,25 @@ export async function syncToGit(raw: unknown) {
   // Check only BuildShip-managed files; never absorb unrelated repo changes.
   const status = execFileSync(
     "git",
-    ["status", "--porcelain", "--untracked-files=all", "--", ...BUILDSHIP_PATHS],
+    ["status", "--porcelain=v1", "-z", "--untracked-files=all", "--", ...BUILDSHIP_PATHS],
     {
       cwd: root,
       encoding: "utf8",
     },
-  ).trimEnd();
+  );
 
   if (!status) {
+    if (push) {
+      const result = pushToRemote(root);
+      return {
+        committed: false,
+        ...result,
+        filesChanged: 0,
+        message: result.pushed
+          ? "BuildShip files are clean; pushed existing commits."
+          : "BuildShip files are clean; push failed.",
+      };
+    }
     return {
       committed: false,
       pushed: false,
@@ -70,41 +93,68 @@ export async function syncToGit(raw: unknown) {
     };
   }
 
-  const changedPaths = status
-    .split("\n")
-    .filter(Boolean)
-    .map((line) => {
-      const value = line.slice(3);
-      return value.includes(" -> ") ? (value.split(" -> ").at(-1) ?? value) : value;
-    });
-  assertDeploymentValid(await validateChangedBuildshipPaths(changedPaths));
-  const filesChanged = changedPaths.length;
-
-  // Stage all and only BuildShip-managed changes.
-  execFileSync("git", ["add", "-A", "--", ...BUILDSHIP_PATHS], {
-    cwd: root,
-    encoding: "utf8",
-    stdio: ["pipe", "pipe", "pipe"],
+  // With -z paths are literal, and rename/copy records contain the destination
+  // followed by a separate source field. Neither quoting nor arrows are syntax.
+  const records = status.split("\0");
+  const changedPaths: string[] = [];
+  let filesChanged = 0;
+  for (let i = 0; i < records.length - 1; i++) {
+    const record = records[i];
+    changedPaths.push(record.slice(3));
+    filesChanged++;
+    if (record.slice(0, 2).match(/[RC]/)) {
+      changedPaths.push(records[++i]);
+    }
+  }
+  const localPaths = changedPaths.map((file) => {
+    if (!file.startsWith(gitPrefix)) {
+      throw new Error(`Git reported a changed path outside the BuildShip directory: ${file}`);
+    }
+    const localPath = file.slice(gitPrefix.length);
+    if (
+      !BUILDSHIP_PATHS.some(
+        (managed) => localPath === managed || localPath.startsWith(`${managed}/`),
+      )
+    ) {
+      throw new Error(`Git reported a changed path outside BuildShip-managed paths: ${file}`);
+    }
+    return localPath;
   });
+  await Promise.all(localPaths.map((file) => assertRepoPath(path.resolve(root, file))));
+  assertDeploymentValid(await validateChangedBuildshipPaths(localPaths));
+  // Limit staging to the paths we actually inspected. Literal, NUL-delimited
+  // pathspecs handle unusual filenames, deletions and absent optional directories.
+  const pathspecs = [...new Set(localPaths)].map((file) => `:(literal)${file}`);
+  const pathspecInput = `${pathspecs.join("\0")}\0`;
 
   // Commit.
   try {
+    execFileSync("git", ["add", "-A", "--pathspec-from-file=-", "--pathspec-file-nul"], {
+      cwd: root,
+      encoding: "utf8",
+      input: pathspecInput,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
     execFileSync("git", ["commit", "-m", message], {
       cwd: root,
       encoding: "utf8",
       stdio: ["pipe", "pipe", "pipe"],
     });
   } catch (error) {
+    let rollbackError: unknown;
     try {
-      execFileSync("git", ["reset", "--quiet", "--", ...BUILDSHIP_PATHS], {
+      execFileSync("git", ["reset", "--quiet", "--pathspec-from-file=-", "--pathspec-file-nul"], {
         cwd: root,
+        input: pathspecInput,
         stdio: ["pipe", "pipe", "pipe"],
       });
-    } catch {
-      // The original commit error is more useful; a repo without HEAD cannot reset.
+    } catch (resetError) {
+      rollbackError = resetError;
     }
     throw new Error(
-      `Git commit failed; staged BuildShip changes were rolled back: ${String(error)}`,
+      rollbackError
+        ? `Git sync failed; index rollback also failed: ${String(rollbackError)}; original error: ${String(error)}`
+        : `Git sync failed; staged BuildShip changes were rolled back: ${String(error)}`,
     );
   }
 
@@ -115,20 +165,7 @@ export async function syncToGit(raw: unknown) {
 
   // A push cannot be rolled back safely once the commit exists. Report an
   // explicit partial result so callers can retry without creating a new commit.
-  let pushed = false;
-  let pushError: string | null = null;
-  if (push) {
-    try {
-      execFileSync("git", ["push"], {
-        cwd: root,
-        encoding: "utf8",
-        stdio: ["pipe", "pipe", "pipe"],
-      });
-      pushed = true;
-    } catch (err) {
-      pushError = err instanceof Error ? err.message : String(err);
-    }
-  }
+  const { pushed, pushError } = push ? pushToRemote(root) : { pushed: false, pushError: null };
 
   return {
     committed: true,
@@ -138,4 +175,17 @@ export async function syncToGit(raw: unknown) {
     filesChanged,
     message,
   };
+}
+
+function pushToRemote(root: string): { pushed: boolean; pushError: string | null } {
+  try {
+    execFileSync("git", ["push"], {
+      cwd: root,
+      encoding: "utf8",
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    return { pushed: true, pushError: null };
+  } catch (error) {
+    return { pushed: false, pushError: error instanceof Error ? error.message : String(error) };
+  }
 }

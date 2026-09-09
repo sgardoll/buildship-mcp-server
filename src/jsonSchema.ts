@@ -3,14 +3,13 @@ import { zodToJsonSchema as toJsonSchema } from "zod-to-json-schema";
 
 /**
  * Wrap zod-to-json-schema with a stable shape suitable for MCP `inputSchema`.
- * MCP expects a draft-7-style object schema; we strip the top-level `$schema`
- * key and the `$ref` indirection that `zod-to-json-schema` emits by default.
+ * Keep the generated draft-07 dialect declaration: MCP defaults to 2020-12
+ * when `$schema` is absent. Inline references for client compatibility.
  */
 export function zodToJsonSchema(schema: ZodTypeAny): Record<string, unknown> {
   const json = toJsonSchema(schema, { target: "jsonSchema7", $refStrategy: "none" }) as Record<
     string,
     unknown
   >;
-  delete json.$schema;
   return json;
 }

@@ -9,6 +9,7 @@ import {
   readJson,
   readText,
   safeJoin,
+  withRepoMutationLock,
   workflowsDir,
   writeFilesTransaction,
   writeText,
@@ -230,6 +231,10 @@ function collectSerializedNodes(node: Record<string, unknown>): Record<string, u
 }
 
 export async function createWorkflow(raw: unknown) {
+  return withRepoMutationLock(() => createWorkflowUnlocked(raw));
+}
+
+async function createWorkflowUnlocked(raw: unknown) {
   const input = CreateWorkflowSchema.parse(raw);
   const slug = slugify(input.name);
   if (!slug) throw new Error("Workflow name must contain at least one letter or number.");
@@ -408,6 +413,10 @@ export const AddNodeToWorkflowSchema = z.object({
 });
 
 export async function addNodeToWorkflow(raw: unknown) {
+  return withRepoMutationLock(() => addNodeToWorkflowUnlocked(raw));
+}
+
+async function addNodeToWorkflowUnlocked(raw: unknown) {
   const { folder, node } = AddNodeToWorkflowSchema.parse(raw);
   const root = await workflowsDir();
   const dir = safeJoin(root, folder);
@@ -471,6 +480,10 @@ export const SetLabelSchema = z.object({
 });
 
 export async function setLabel(raw: unknown) {
+  return withRepoMutationLock(() => setLabelUnlocked(raw));
+}
+
+async function setLabelUnlocked(raw: unknown) {
   const { id, label } = SetLabelSchema.parse(raw);
   const file = safeJoin(await labelsDir(), `${id}.txt`);
   await writeText(file, label);

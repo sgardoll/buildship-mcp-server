@@ -435,8 +435,8 @@ Plus `flow-id-to-label/<workflowId>.txt` mapping the workflow's UUID to a human-
 | `create_workflow` | Create a transactionally validated workflow with a complete REST v2 trigger, fully materialized nodes, one Flow Output node, and its label mapping. |
 | `add_node_to_workflow` | Materialize a complete custom/control node and atomically update `nodes.json`, `meta.json`, and `schema.json`. |
 | `set_flow_label` / `get_flow_label` | Read or write a single `flow-id-to-label/<id>.txt` file. |
-| `validate_deployment` | Validate one node, one workflow, or the whole repo: required files, JSON schemas, TypeScript, references, bindings, and deployable serialization. |
-| `sync_to_git` | Validate changed artifacts, stage only BuildShip-managed paths, commit, and optionally push. |
+| `validate_deployment` | Run local deployment preflight for one node, one workflow, or the whole repo: required files, supported schemas, TypeScript, references, bindings, and serialization checks. |
+| `sync_to_git` | Validate changed artifacts, stage only inspected BuildShip-managed paths, commit, and optionally push. A clean checkout can retry a previous push. |
 
 ### Example: create a node
 
@@ -467,6 +467,7 @@ Plus `flow-id-to-label/<workflowId>.txt` mapping the workflow's UUID to a human-
     "name": "users/greet",
     "description": "Greets a user by name.",
     "trigger": { "method": "POST", "path": "/users/greet" },
+    "inputs": { "name": { "type": "string" } },
     "nodes": [
       {
         "type": "script",
@@ -480,7 +481,7 @@ Plus `flow-id-to-label/<workflowId>.txt` mapping the workflow's UUID to a human-
 }
 ```
 
-The server picks a folder name like `users-greet-aB3x`, generates a 20-char workflow id, embeds the complete `greet-user` definition, writes a complete deployable REST trigger, appends one Flow Output node, and validates every file/reference before committing the transaction.
+The server picks a folder name like `users-greet-aB3x`, generates a 20-char workflow id, embeds the `greet-user` definition, writes the REST trigger, appends one Flow Output node, and runs local preflight before completing the file transaction. The input declaration above is required for the `inputs.name` binding. Configure and test the actual request mapping in BuildShip before relying on the endpoint.
 
 ### Example: sync changes to GitHub
 
@@ -494,7 +495,13 @@ The server picks a folder name like `users-greet-aB3x`, generates a 20-char work
 }
 ```
 
-The server validates changed nodes/workflows, stages only `nodes/`, `workflows/`, and `flow-id-to-label/`, commits with your message, and pushes to GitHub. Set `push: false` to commit only. If push fails, the result explicitly reports the locally created commit and `pushError` so the same commit can be retried.
+The server validates changed nodes/workflows, stages only inspected paths under `nodes/`, `workflows/`, and `flow-id-to-label/`, commits with your message, and pushes to the configured Git remote. Set `push: false` to commit only. If push fails, the result retains the locally created `commitHash` and reports `pushError`. Call `sync_to_git` again with `push: true` to retry; when the checkout is clean, it pushes the existing commit without creating another. As with ordinary `git push`, this can publish other commits already present on the branch.
+
+### Validation and deployment boundaries
+
+`validate_deployment` is a local preflight, not a BuildShip deployment receipt. It checks this server's supported serialization rules and TypeScript contracts; it does not install or execute node dependencies, verify credentials, register triggers, or call an endpoint. Unresolved-import diagnostics are intentionally excluded, and schema checking covers a subset of JSON Schema.
+
+A successful Git push confirms Git transport completed. BuildShip acceptance and a real trigger execution must be verified separately in the configured project. BuildShip documents [deployment through GitHub commits](https://buildship.com/changelog) and [REST trigger configuration and testing](https://docs.buildship.com/triggers-rest-api/rest-api).
 
 ---
 
@@ -512,7 +519,7 @@ Once configured, ask your AI assistant:
 > → Calls `create_workflow` with the trigger and node wiring, then calls `set_flow_label`.
 
 > **"Sync all changes to GitHub."**
-> → Calls `sync_to_git` to stage, commit, and push everything to the BuildShip repo's git remote.
+> → Calls `sync_to_git` to validate and commit changed BuildShip-managed files, then push the branch to its configured Git remote.
 
 ---
 
@@ -524,10 +531,13 @@ Once configured, ask your AI assistant:
 - Rejects skeletal/library workflow nodes and emits complete BuildShip REST v2 trigger/node definitions.
 - Rolls back related files as one transaction when a write or deployment validation fails.
 - Enforces traversal-safe node ids, workflow folders, label ids, and SemVer versions.
-- All path operations use `safeJoin` — path traversal via `..` or absolute paths is blocked.
+- Checks repository containment at filesystem read/write boundaries and rejects symbolic links below the configured repository root, including file links. A symlink used to locate the repository root itself is supported.
+- Serializes tool operations within one server process, including preparation, validation, and rollback, so concurrent edits do not overwrite one another and reads do not observe partial tool writes.
 - All git operations use `execFileSync` with args array (no shell) — no shell injection risk.
 - Rejects pre-existing staged changes and never stages unrelated repository files.
 - Refuses to start if the repo root cannot be located, so the agent gets a clear error rather than scribbling files in `cwd`.
+
+These protections coordinate one server process. Other processes can still change files or the Git index, and filesystem checks do not provide a sandbox against an adversarial process racing path changes. Use a dedicated checkout when running multiple agents or external Git tools. MCP behavior annotations describe tool effects for clients; they do not enforce permissions.
 
 ---
 
