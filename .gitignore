@@ -141,3 +141,5 @@ vite.config.ts.timestamp-*
 # macOS
 .DS_Store
 /.serena
+NOW.md
+IMPROVEMENTS.md
