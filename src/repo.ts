@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
@@ -22,6 +23,9 @@ async function exists(p: string): Promise<boolean> {
  * user-supplied tool parameters. Throws if the resolved path escapes `base`.
  */
 export function safeJoin(base: string, ...segments: string[]): string {
+  if ([base, ...segments].some((segment) => segment.includes("\0"))) {
+    throw new Error("Paths cannot contain null bytes.");
+  }
   const joined = path.join(base, ...segments);
   const resolved = path.resolve(joined);
   const resolvedBase = path.resolve(base);
@@ -90,7 +94,30 @@ export async function labelsDir(): Promise<string> {
   return path.join(await resolveRepoRoot(), "flow-id-to-label");
 }
 
+/** Reject repository links before filesystem access; the configured root may itself be an alias. */
+export async function assertRepoPath(file: string): Promise<void> {
+  const root = path.resolve(await resolveRepoRoot());
+  const resolved = path.resolve(file);
+  const relative = path.relative(root, resolved);
+  if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+    throw new Error(`Path escapes the repository: ${file}`);
+  }
+  let current = await fs.realpath(root);
+  for (const segment of relative.split(path.sep).filter(Boolean)) {
+    current = path.join(current, segment);
+    try {
+      if ((await fs.lstat(current)).isSymbolicLink()) {
+        throw new Error(`Symbolic links are not allowed in repository paths: ${file}`);
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+      throw error;
+    }
+  }
+}
+
 export async function readJson<T = unknown>(file: string): Promise<T> {
+  await assertRepoPath(file);
   let raw: string;
   try {
     raw = await fs.readFile(file, "utf8");
@@ -105,6 +132,7 @@ export async function readJson<T = unknown>(file: string): Promise<T> {
 }
 
 async function writeAtomic(file: string, content: string): Promise<void> {
+  await assertRepoPath(file);
   await fs.mkdir(path.dirname(file), { recursive: true });
   const tmp = `${file}.${process.pid}.${randomUUID()}.tmp`;
   try {
@@ -117,15 +145,16 @@ async function writeAtomic(file: string, content: string): Promise<void> {
 }
 
 export async function writeJson(file: string, value: unknown): Promise<void> {
-  await writeAtomic(file, `${JSON.stringify(value, null, 2)}\n`);
+  await withRepoMutationLock(() => writeAtomic(file, `${JSON.stringify(value, null, 2)}\n`));
 }
 
 export async function writeText(file: string, value: string): Promise<void> {
   const ending = value.endsWith("\n") ? value : `${value}\n`;
-  await writeAtomic(file, ending);
+  await withRepoMutationLock(() => writeAtomic(file, ending));
 }
 
 export async function readText(file: string): Promise<string> {
+  await assertRepoPath(file);
   try {
     return await fs.readFile(file, "utf8");
   } catch (error) {
@@ -145,6 +174,25 @@ interface FileSnapshot {
 }
 
 let transactionTail: Promise<void> = Promise.resolve();
+const mutationContext = new AsyncLocalStorage<{ active: boolean }>();
+
+/** Serialize whole operations, including reads and preconditions, within this server process. */
+export async function withRepoMutationLock<T>(operation: () => Promise<T>): Promise<T> {
+  if (mutationContext.getStore()?.active) return operation();
+  const previous = transactionTail;
+  let release: () => void = () => undefined;
+  transactionTail = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await previous;
+  const context = { active: true };
+  try {
+    return await mutationContext.run(context, operation);
+  } finally {
+    context.active = false;
+    release();
+  }
+}
 
 /**
  * Atomically apply a related set of file changes. Each individual replacement
@@ -155,17 +203,7 @@ export async function writeFilesTransaction(
   files: TransactionFile[],
   validate?: () => Promise<void>,
 ): Promise<void> {
-  const previous = transactionTail;
-  let release: () => void = () => undefined;
-  transactionTail = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  await previous;
-  try {
-    await writeFilesTransactionUnlocked(files, validate);
-  } finally {
-    release();
-  }
+  await withRepoMutationLock(() => writeFilesTransactionUnlocked(files, validate));
 }
 
 async function writeFilesTransactionUnlocked(
@@ -181,6 +219,7 @@ async function writeFilesTransactionUnlocked(
   const createdDirectories = new Set<string>();
   for (const { file } of files) {
     const resolved = path.resolve(file);
+    await assertRepoPath(resolved);
     try {
       snapshots.push({ file: resolved, existed: true, content: await fs.readFile(resolved) });
     } catch (error) {
@@ -235,10 +274,12 @@ async function writeFilesTransactionUnlocked(
 }
 
 export async function pathExists(p: string): Promise<boolean> {
+  await assertRepoPath(p);
   return exists(p);
 }
 
 export async function listDirs(dir: string): Promise<string[]> {
+  await assertRepoPath(dir);
   const entries = await fs.readdir(dir, { withFileTypes: true });
   return entries
     .filter((e) => e.isDirectory())

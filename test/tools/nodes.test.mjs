@@ -96,6 +96,18 @@ describe("Node tools — valid operations", () => {
 });
 
 describe("Node tools — overwrite protection", () => {
+  it("allows only one concurrent creation of the same node without overwrite", async () => {
+    const results = await Promise.allSettled([
+      createNode({ id: "concurrent-node", label: "First" }),
+      createNode({ id: "concurrent-node", label: "Second" }),
+    ]);
+    assert.equal(results.filter((result) => result.status === "fulfilled").length, 1);
+    const rejected = results.find((result) => result.status === "rejected");
+    assert.match(rejected.reason.message, /already exists/);
+    const node = await getNode({ id: "concurrent-node" });
+    assert.equal(node.schema.label, "First");
+  });
+
   it("refuses to create existing node without overwrite", async () => {
     await assert.rejects(createNode({ id: "greet-user", label: "Duplicate" }), /already exists/);
   });
@@ -174,6 +186,45 @@ describe("Node tools — path traversal protection", () => {
 });
 
 describe("Node tools — semantic validation and rollback", () => {
+  it("preserves array items and other output schema constraints", async () => {
+    const output = {
+      type: "array",
+      items: {
+        type: "object",
+        properties: { status: { type: "string", enum: ["ready"] } },
+        required: ["status"],
+        additionalProperties: false,
+      },
+      minItems: 1,
+    };
+    await createNode({
+      id: "array-output-node",
+      label: "Array Output",
+      output,
+      mainTs:
+        'export default async function (): Promise<NodeOutput> { return [{ status: "ready" }]; }',
+    });
+    const node = await getNode({ id: "array-output-node" });
+    assert.deepEqual(node.output.items, output.items);
+    assert.equal(node.output.minItems, 1);
+
+    await createNode({
+      id: "constrained-output-node",
+      label: "Constrained Output",
+      output: {
+        type: "object",
+        properties: { status: { type: "string" } },
+        required: ["status"],
+        additionalProperties: false,
+      },
+      mainTs:
+        'export default async function (): Promise<NodeOutput> { return { status: "ready" }; }',
+    });
+    const constrained = await getNode({ id: "constrained-output-node" });
+    assert.deepEqual(constrained.output.required, ["status"]);
+    assert.equal(constrained.output.additionalProperties, false);
+  });
+
   it("rejects a TypeScript output mismatch and restores the previous main.ts", async () => {
     await createNode({
       id: "rollback-node",

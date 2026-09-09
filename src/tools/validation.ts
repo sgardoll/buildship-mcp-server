@@ -152,10 +152,24 @@ function formatDiagnostic(diagnostic: ts.Diagnostic): string {
 }
 
 function bindingNames(name: ts.BindingName): string[] {
-  if (ts.isIdentifier(name)) return [name.text];
-  return name.elements.flatMap((element) =>
-    ts.isOmittedExpression(element) ? [] : bindingNames(element.name),
-  );
+  if (!ts.isObjectBindingPattern(name)) return [];
+  return name.elements.flatMap((element) => {
+    // Validate the input property, not its local alias or nested bindings.
+    // Object rest collects remaining inputs and introduces no new property.
+    if (element.dotDotDotToken) return [];
+    const property = element.propertyName ?? element.name;
+    if (
+      ts.isIdentifier(property) ||
+      ts.isStringLiteralLike(property) ||
+      ts.isNumericLiteral(property)
+    ) {
+      return [property.text];
+    }
+    if (ts.isComputedPropertyName(property) && ts.isStringLiteralLike(property.expression)) {
+      return [property.expression.text];
+    }
+    return [];
+  });
 }
 
 function typeMatchesSchema(type: ts.Type, schema: JsonObject, checker: ts.TypeChecker): boolean {
@@ -227,54 +241,78 @@ function typeCheckMainTs(
   }
 
   const sourceFile = program.getSourceFile(mainFile);
-  let defaultFunction: ts.FunctionLikeDeclaration | undefined;
-  for (const statement of sourceFile?.statements ?? []) {
-    if (
-      ts.isFunctionDeclaration(statement) &&
-      statement.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.DefaultKeyword)
-    ) {
-      defaultFunction = statement;
-    }
-    if (
-      ts.isExportAssignment(statement) &&
-      (ts.isArrowFunction(statement.expression) || ts.isFunctionExpression(statement.expression))
-    ) {
-      defaultFunction = statement.expression;
-    }
+  const checker = program.getTypeChecker();
+  const moduleSymbol = sourceFile && checker.getSymbolAtLocation(sourceFile);
+  let defaultExport =
+    moduleSymbol &&
+    checker.getExportsOfModule(moduleSymbol).find((symbol) => symbol.name === "default");
+  if (defaultExport && defaultExport.flags & ts.SymbolFlags.Alias) {
+    defaultExport = checker.getAliasedSymbol(defaultExport);
   }
-  if (!defaultFunction) {
+  const signatures =
+    defaultExport && sourceFile
+      ? checker.getSignaturesOfType(
+          checker.getTypeOfSymbolAtLocation(defaultExport, sourceFile),
+          ts.SignatureKind.Call,
+        )
+      : [];
+  if (signatures.length === 0) {
     errors.push(issue(target, "must export a default node function."));
     return;
   }
 
   const inputProperties = isObject(inputs.properties) ? inputs.properties : {};
-  const firstParameter = defaultFunction.parameters[0];
-  if (firstParameter && !ts.isIdentifier(firstParameter.name)) {
-    for (const inputName of bindingNames(firstParameter.name)) {
-      if (!(inputName in inputProperties)) {
-        errors.push(issue(target, `function destructures undeclared input \`${inputName}\`.`));
-      }
+  const checkReturnType = (type: ts.Type) => {
+    const returnType = checker.getAwaitedType(type) ?? type;
+    if (!typeMatchesSchema(returnType, output, checker)) {
+      errors.push(
+        issue(
+          target,
+          `return expression type \`${checker.typeToString(returnType)}\` is incompatible with output schema type \`${String(output.type)}\`.`,
+        ),
+      );
     }
-  }
-
-  const checker = program.getTypeChecker();
-  const visitReturns = (node: ts.Node) => {
-    if (node !== defaultFunction && ts.isFunctionLike(node)) return;
-    if (ts.isReturnStatement(node) && node.expression) {
-      const returnType = checker.getTypeAtLocation(node.expression);
-      if (!typeMatchesSchema(returnType, output, checker)) {
-        errors.push(
-          issue(
-            target,
-            `return expression type \`${checker.typeToString(returnType)}\` is incompatible with output schema type \`${String(output.type)}\`.`,
-          ),
-        );
-      }
-    }
-    ts.forEachChild(node, visitReturns);
   };
-  if (defaultFunction.body) {
-    visitReturns(defaultFunction.body);
+  const declarations = new Set<ts.Node>(defaultExport?.declarations ?? []);
+  for (const signature of signatures) {
+    // BuildShip awaits node results. Checking the callable's resolved return
+    // type also covers concise arrows, named exports, and missing returns.
+    checkReturnType(checker.getReturnTypeOfSignature(signature));
+    if (signature.declaration) declarations.add(signature.declaration);
+  }
+  // Overload call signatures do not contain the implementation body. Include
+  // the exported symbol's declarations so broad overloads cannot hide it.
+  for (const declaration of declarations) {
+    if (
+      !(
+        ts.isFunctionDeclaration(declaration) ||
+        ts.isFunctionExpression(declaration) ||
+        ts.isArrowFunction(declaration)
+      )
+    )
+      continue;
+    const firstParameter = declaration.parameters[0];
+    if (firstParameter && !ts.isQualifiedName(firstParameter.name)) {
+      for (const inputName of bindingNames(firstParameter.name)) {
+        if (!(inputName in inputProperties)) {
+          errors.push(issue(target, `function destructures undeclared input \`${inputName}\`.`));
+        }
+      }
+    }
+    // Broad return annotations must not hide concrete incompatible returns.
+    const body = declaration.body;
+    if (body && !ts.isBlock(body)) {
+      checkReturnType(checker.getTypeAtLocation(body));
+    } else if (body) {
+      const visit = (node: ts.Node) => {
+        if (ts.isFunctionLike(node)) return;
+        if (ts.isReturnStatement(node) && node.expression) {
+          checkReturnType(checker.getTypeAtLocation(node.expression));
+        }
+        ts.forEachChild(node, visit);
+      };
+      visit(body);
+    }
   }
 }
 
@@ -838,7 +876,9 @@ export async function validateChangedBuildshipPaths(paths: string[]): Promise<Va
   const reports: ValidationReport[] = [];
   const targets = new Set<string>();
   for (const changedPath of paths) {
-    const normalized = changedPath.replaceAll("\\", "/");
+    // Git emits forward-slash separators on every platform. Backslashes in
+    // a POSIX filename are literal and must not redirect validation elsewhere.
+    const normalized = changedPath;
     const nodeMatch = normalized.match(/^nodes\/([^/]+)\/([^/]+)\//);
     if (nodeMatch) targets.add(`node:${nodeMatch[1]}@${nodeMatch[2]}`);
     const workflowMatch = normalized.match(/^workflows\/([^/]+)\//);

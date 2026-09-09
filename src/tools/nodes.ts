@@ -8,6 +8,7 @@ import {
   readJson,
   readText,
   safeJoin,
+  withRepoMutationLock,
   writeFilesTransaction,
 } from "../repo.js";
 import { assertDeploymentValid, validateNode } from "./validation.js";
@@ -68,6 +69,7 @@ export const CreateNodeInputSchema = z
         properties: z.record(z.string(), z.unknown()).default({}),
       })
       .partial()
+      .passthrough()
       .default({}),
     mainTs: z.string().optional(),
     overwrite: z.boolean().default(false),
@@ -113,6 +115,7 @@ function toInputsJson(input: CreateNodeInput) {
 function toOutputJson(input: CreateNodeInput) {
   return {
     buildship: {},
+    ...input.output,
     type: input.output.type ?? "object",
     title: input.output.title ?? "output",
     description: input.output.description ?? "",
@@ -141,6 +144,10 @@ function toSchemaJson(input: CreateNodeInput) {
 }
 
 export async function createNode(raw: unknown) {
+  return withRepoMutationLock(() => createNodeUnlocked(raw));
+}
+
+async function createNodeUnlocked(raw: unknown) {
   const input = CreateNodeInputSchema.parse(raw);
   const root = await nodesDir();
   const versionDir = safeJoin(root, input.id, input.version);
@@ -260,6 +267,10 @@ export const UpdateNodeFileSchema = z.object({
 });
 
 export async function updateNodeFile(raw: unknown) {
+  return withRepoMutationLock(() => updateNodeFileUnlocked(raw));
+}
+
+async function updateNodeFileUnlocked(raw: unknown) {
   const { id, version, file, content } = UpdateNodeFileSchema.parse(raw);
   const root = await nodesDir();
   const versionDir = safeJoin(root, id, version);

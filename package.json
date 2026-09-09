@@ -1,6 +1,6 @@
 {
   "name": "buildship-mcp-server",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "MCP server for creating and editing BuildShip nodes and workflows in this repository.",
   "license": "MIT",
   "author": "Stuart Gardoll",
@@ -36,6 +36,8 @@
     "dev": "tsc --watch",
     "typecheck": "tsc --noEmit",
     "check": "node dist/index.js --check",
+    "check:updates": "node dist/index.js --check-updates",
+    "check:release": "node scripts/check-release.mjs",
     "test": "tsc && node --test",
     "lint": "biome check src test scripts",
     "format": "biome format --write src test scripts",
