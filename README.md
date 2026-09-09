@@ -1,8 +1,8 @@
 # BuildShip MCP Server
 
 [![MCP stdio](https://img.shields.io/badge/MCP-stdio-blue)](https://modelcontextprotocol.io)
-[![Version](https://img.shields.io/badge/version-0.2.0-blue)](https://github.com/sgardoll/buildship-mcp-server)
-[![Node](https://img.shields.io/badge/Node.js-%E2%89%A518-brightgreen)](https://nodejs.org)
+[![Latest release](https://img.shields.io/github/v/release/sgardoll/buildship-mcp-server)](https://github.com/sgardoll/buildship-mcp-server/releases)
+[![Node](https://img.shields.io/badge/Node.js-24_LTS_recommended-brightgreen)](https://nodejs.org/en/about/previous-releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 > **Model Context Protocol server** that lets your AI assistant create and edit BuildShip **custom nodes** and **workflows** directly in your repository.
@@ -34,16 +34,16 @@ Once enabled, BuildShip will sync `nodes/`, `workflows/`, and `flow-id-to-label/
 
 ---
 
-## Quick Start (genuine 2 minutes)
+## Quick Start
 
-This is the full happy path. Skip nothing.
+Use [Node.js 24 LTS](https://nodejs.org/en/about/previous-releases) and Git. The minimum supported Node version is declared in [package.json](package.json).
 
 ### 1. Clone & build
 
 ```bash
 git clone https://github.com/sgardoll/buildship-mcp-server.git
 cd buildship-mcp-server
-npm install              # `prepare` hook auto-builds dist/
+npm ci                   # `prepare` hook auto-builds dist/
 ```
 
 > If you already cloned previously and `dist/` is missing, run `npm run build`.
@@ -78,9 +78,8 @@ If you see that line, the server is correctly built and locates your repo. If yo
 Pick **one** tool below and paste the snippet. The Claude Code CLI is the fastest:
 
 ```bash
-claude mcp add --transport stdio \
-  --env BUILDSHIP_REPO=/absolute/path/to/your/buildship-repo \
-  buildship -- node /absolute/path/to/buildship-mcp-server/dist/index.js
+claude mcp add --env BUILDSHIP_REPO=/absolute/path/to/your/buildship-repo \
+  --transport stdio buildship -- node /absolute/path/to/buildship-mcp-server/dist/index.js
 ```
 
 Then verify: `claude mcp list` should show `buildship`. Ask your assistant *"List all custom nodes in the BuildShip repo"* — if you get a list, you're done.
@@ -91,7 +90,29 @@ For other tools (Claude Desktop, Cursor, Zed, VS Code, Continue, OpenCode, Cline
 
 ## Updating an existing install
 
-The server runs directly from your cloned checkout; there is no global npm package to upgrade. Update the clone, reinstall its locked dependencies, and rebuild `dist/`:
+The server runs from your cloned checkout. Check its installed version and published release availability without starting an MCP session:
+
+```bash
+node dist/index.js --version
+node dist/index.js --check-updates
+```
+
+The installed version comes from `package.json` and is also advertised in the MCP handshake. The badge above follows published GitHub Releases. Preparing version `0.3.0` does not publish it: until the first release is published, the checker reports `no_release` and the badge may be unavailable.
+
+In your MCP client, call `check_for_updates` with `{ "force": false }` (or omit the arguments). Its JSON result includes `installedVersion`, `latestVersion`, `updateAvailable`, `releaseUrl`, and `updateInstructions`. The `status` is one of:
+
+| Status | Meaning |
+| --- | --- |
+| `update_available` | A newer stable GitHub release is available. |
+| `up_to_date` | The installed version is at least as new as the latest stable release. |
+| `no_release` | No published stable release is available. |
+| `unavailable` | The release check failed; this does not establish whether an update exists. |
+
+Checks contact GitHub only when requested, with a 3-second timeout. Successful results, including `no_release`, are cached for 24 hours within the server process; failures are cached for 60 seconds. Set `force: true` to refresh. Each CLI invocation starts a fresh process and cache. Startup makes no update request, and the checker never installs updates. Version and update checks work without `BUILDSHIP_REPO`; inspect the JSON `status` because `unavailable` also exits successfully.
+
+For release notifications, select **Watch → Custom → Releases** on the [GitHub repository](https://github.com/sgardoll/buildship-mcp-server), then save your notification preference. See [GitHub's notification settings](https://docs.github.com/en/subscriptions-and-notifications/get-started/configuring-notifications).
+
+To update a checkout that follows a branch, first review `git status` and preserve any local edits, then:
 
 ```bash
 cd /absolute/path/to/buildship-mcp-server
@@ -100,7 +121,17 @@ npm ci
 BUILDSHIP_REPO=/absolute/path/to/your/buildship-repo npm run check
 ```
 
-`npm ci` runs the `prepare` hook, which rebuilds `dist/`. Fully quit and restart your MCP client afterward so it starts the updated server process.
+To pin a published stable release, replace `vX.Y.Z` with the tag shown on the release page:
+
+```bash
+git fetch origin --tags
+git switch --detach vX.Y.Z
+npm ci
+```
+
+A release checkout uses detached HEAD, so `git pull` does not update it. Select the next release tag explicitly with the same commands. Do not overwrite local edits to switch versions.
+
+`npm ci` rebuilds `dist/` through the `prepare` hook. Verify with `npm run check`, then fully quit and restart your MCP client so it starts the updated server process.
 
 ---
 
@@ -112,21 +143,19 @@ After you've cloned + built the server (Quick Start steps 1–3 above), click yo
 [![Install in VS Code](https://img.shields.io/badge/Install%20in-VS%20Code-007ACC?style=for-the-badge&logo=visualstudiocode&logoColor=white)](vscode:mcp/install?%7B%22name%22%3A%22buildship%22%2C%22command%22%3A%22node%22%2C%22args%22%3A%5B%22%2FABSOLUTE%2FPATH%2FTO%2Fbuildship-mcp-server%2Fdist%2Findex.js%22%5D%2C%22env%22%3A%7B%22BUILDSHIP_REPO%22%3A%22%2FABSOLUTE%2FPATH%2FTO%2Fyour-buildship-repo%22%7D%7D)
 [![Install in VS Code Insiders](https://img.shields.io/badge/Install%20in-VS%20Code%20Insiders-1F9CF0?style=for-the-badge&logo=visualstudiocode&logoColor=white)](vscode-insiders:mcp/install?%7B%22name%22%3A%22buildship%22%2C%22command%22%3A%22node%22%2C%22args%22%3A%5B%22%2FABSOLUTE%2FPATH%2FTO%2Fbuildship-mcp-server%2Fdist%2Findex.js%22%5D%2C%22env%22%3A%7B%22BUILDSHIP_REPO%22%3A%22%2FABSOLUTE%2FPATH%2FTO%2Fyour-buildship-repo%22%7D%7D)
 
-> These three are the **only** MCP clients (as of 2026) that publish a config-bearing deep-link protocol. If the button does nothing, your OS doesn't have a handler registered for the URL scheme — use the manual snippet in the per-tool section below.
+If a button does nothing, use the manual snippet in the per-tool section below.
 
 ### Other clients — jump to manual setup
 
-No deep-link protocol exists for these yet, so installation is a one-time JSON snippet paste. Each section below has the exact text to copy:
+These sections provide CLI or configuration-file setup:
 
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-Manual%20setup-D97757?style=for-the-badge)](#claude-code-cli)
 [![Claude Desktop](https://img.shields.io/badge/Claude%20Desktop-Manual%20setup-D97757?style=for-the-badge)](#claude-desktop)
 [![Zed](https://img.shields.io/badge/Zed-Manual%20setup-084CCF?style=for-the-badge)](#zed)
 [![Continue](https://img.shields.io/badge/Continue-Manual%20setup-7B7BFF?style=for-the-badge)](#continuedev)
 [![OpenCode](https://img.shields.io/badge/OpenCode-Manual%20setup-1F1F1F?style=for-the-badge)](#opencode)
-[![Cline](https://img.shields.io/badge/Cline-Manual%20setup-FF6B6B?style=for-the-badge)](#cline--roo-code)
+[![Cline](https://img.shields.io/badge/Cline-Manual%20setup-FF6B6B?style=for-the-badge)](#cline)
 [![Windsurf](https://img.shields.io/badge/Windsurf-Manual%20setup-0FCFA6?style=for-the-badge)](#windsurf)
-
-> *Claude Code is "manual" only in the sense that there's no URL-scheme one-click — but its `claude mcp add` CLI is effectively one command.*
 
 ---
 
@@ -139,12 +168,11 @@ Every snippet below assumes you've replaced the two placeholders:
 
 ### Claude Code (CLI)
 
-One command in your terminal (not inside Claude Code itself):
+Run this in your terminal. Keep all client options before the server name, as described in the [Claude Code MCP documentation](https://code.claude.com/docs/en/mcp):
 
 ```bash
-claude mcp add --transport stdio \
-  --env BUILDSHIP_REPO=/ABSOLUTE/PATH/TO/your-buildship-repo \
-  buildship -- node /ABSOLUTE/PATH/TO/buildship-mcp-server/dist/index.js
+claude mcp add --env BUILDSHIP_REPO=/ABSOLUTE/PATH/TO/your-buildship-repo \
+  --transport stdio buildship -- node /ABSOLUTE/PATH/TO/buildship-mcp-server/dist/index.js
 ```
 
 Verify: `claude mcp list` → you should see `buildship`. To remove later: `claude mcp remove buildship`.
@@ -171,7 +199,6 @@ Edit the config file:
 
 - **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
 - **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
-- **Linux**: `~/.config/Claude/claude_desktop_config.json`
 
 Add (or merge into) `mcpServers`:
 
@@ -239,7 +266,7 @@ code --add-mcp '{"name":"buildship","command":"node","args":["/ABSOLUTE/PATH/TO/
 
 ### Zed
 
-Edit `~/.config/zed/settings.json` (or `~/Library/Application Support/Zed/settings.json` on macOS):
+Run **zed: open settings file** from Zed's command palette and merge this configuration. See [Zed's MCP documentation](https://zed.dev/docs/ai/mcp).
 
 ```json
 {
@@ -261,7 +288,7 @@ Reload Zed (`Cmd+Shift+P` → "zed: reload"). Tools appear in the agent's tool l
 
 ### Continue.dev
 
-Continue uses `~/.continue/config.yaml` (YAML is the current schema). Add:
+Add this entry to `mcpServers` in `~/.continue/config.yaml`. Continue's [MCP documentation](https://docs.continue.dev/customize/deep-dives/mcp) also describes workspace-local YAML configurations.
 
 ```yaml
 mcpServers:
@@ -271,21 +298,6 @@ mcpServers:
       - /ABSOLUTE/PATH/TO/buildship-mcp-server/dist/index.js
     env:
       BUILDSHIP_REPO: /ABSOLUTE/PATH/TO/your-buildship-repo
-```
-
-Or, if you still use the legacy JSON config:
-
-```json
-{
-  "mcpServers": [
-    {
-      "name": "buildship",
-      "command": "node",
-      "args": ["/ABSOLUTE/PATH/TO/buildship-mcp-server/dist/index.js"],
-      "env": { "BUILDSHIP_REPO": "/ABSOLUTE/PATH/TO/your-buildship-repo" }
-    }
-  ]
-}
 ```
 
 ---
@@ -314,12 +326,33 @@ Or interactively: `opencode mcp add`.
 
 ---
 
-### Cline / Roo Code
+### Cline
 
-Open the Cline panel → ⚙️ → **MCP Servers** → **Edit MCP Settings**, or edit the file directly:
+Open **MCP Servers → Configure → Configure MCP Servers** in Cline. Current releases use `~/.cline/data/settings/cline_mcp_settings.json` by default; opening it through the UI also handles configured path overrides. See the [settings path resolver](https://github.com/cline/cline/blob/main/sdk/packages/shared/src/storage/paths.ts) and [Cline MCP configuration](https://docs.cline.bot/mcp/mcp-overview).
 
-- **macOS:** `~/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json`
-- **Windows:** `%APPDATA%\Code\User\globalStorage\saoudrizwan.claude-dev\settings\cline_mcp_settings.json`
+```json
+{
+  "mcpServers": {
+    "buildship": {
+      "command": "node",
+      "args": ["/ABSOLUTE/PATH/TO/buildship-mcp-server/dist/index.js"],
+      "env": {
+        "BUILDSHIP_REPO": "/ABSOLUTE/PATH/TO/your-buildship-repo"
+      },
+      "autoApprove": [],
+      "disabled": false
+    }
+  }
+}
+```
+
+Save and verify BuildShip appears in Cline's MCP server list.
+
+---
+
+### Roo Code
+
+Use **Edit Project MCP** in Roo's MCP settings, or create `.roo/mcp.json` in your project. Roo uses `alwaysAllow`, while Cline uses `autoApprove`. See [Roo's MCP configuration](https://roocodeinc.github.io/Roo-Code/features/mcp/using-mcp-in-roo/).
 
 ```json
 {
@@ -337,13 +370,11 @@ Open the Cline panel → ⚙️ → **MCP Servers** → **Edit MCP Settings**, o
 }
 ```
 
-Save — Cline auto-reloads.
-
 ---
 
 ### Windsurf
 
-Add to Windsurf's MCP settings (Settings → MCP Servers) or to `.windsurf/mcp.json`:
+For the legacy Cascade agent, edit `~/.codeium/windsurf/mcp_config.json` through the MCP settings panel. These instructions are specific to Cascade; the Devin Local agent has separate configuration. See the [current Cascade MCP documentation](https://docs.devin.ai/desktop/cascade/mcp).
 
 ```json
 {
@@ -365,7 +396,7 @@ Add to Windsurf's MCP settings (Settings → MCP Servers) or to `.windsurf/mcp.j
 
 | Variable | Required | Description |
 | --- | --- | --- |
-| `BUILDSHIP_REPO` | **Yes (recommended)** | Absolute path to your BuildShip GitHub repo. If omitted, the server walks up from its own directory and `cwd` looking for `nodes/` + `workflows/`. Auto-detection only works when the server is *inside* the BuildShip repo, so explicit is safer. |
+| `BUILDSHIP_REPO` | No; recommended | Absolute path to your BuildShip directory. If omitted, the server walks upward from its own location, then from its working directory (`cwd`), looking for `nodes/` and `workflows/`. Explicit configuration avoids depending on the client's launch directory. |
 
 ---
 
@@ -373,7 +404,7 @@ Add to Windsurf's MCP settings (Settings → MCP Servers) or to `.windsurf/mcp.j
 
 **`Could not locate the BuildShip repo`** — `BUILDSHIP_REPO` is unset and auto-detection failed. Set the env var to the absolute path of your repo. Verify with `BUILDSHIP_REPO=/your/path npm run check`.
 
-**`... does not look like a BuildShip repo (missing nodes/ or workflows/)`** — the path you set exists, but doesn't contain `nodes/` and `workflows/` directories. Make sure you're pointing at the **root** of the GitHub repo BuildShip syncs to, not a subfolder. If the directories are missing entirely, your BuildShip project may not have GitHub Integration enabled yet — see the [prerequisite](#%EF%B8%8F-prerequisite--enable-buildship-github-integration) above.
+**`... does not look like a BuildShip repo (missing nodes/ or workflows/)`** — point at the directory containing both `nodes/` and `workflows/`. This directory can itself be inside a larger Git repository. If the directories are missing entirely, check your BuildShip project's GitHub Integration settings.
 
 **`Cannot find module '.../dist/index.js'`** — `dist/` doesn't exist yet. Run `npm run build` inside the cloned repo. (Fresh installs auto-build via the `prepare` hook; this only happens after a manual `git clone` followed by `npm install --ignore-scripts` or a broken build.)
 
@@ -401,9 +432,9 @@ Each version lives under `nodes/<id>/<version>/` with five files:
 - `inputs.json` — parameter definitions visible in the BuildShip UI
 - `output.json` — return value schema consumed by downstream nodes
 - `meta.json` — metadata (e.g. `gitIntegrationVersion`)
-- `main.ts` — the executable TypeScript entrypoint (default export async function)
+- `main.ts` — the executable TypeScript entrypoint, with a callable default export
 
-> Do not rename or remove input/output property keys once published — existing workflows reference them by name. Keep the `export default async function` signature. Node IDs must be lowercase kebab-case.
+> Keep a callable default export: synchronous functions, async functions, arrow functions, and named functions exported as default are supported. Preserve published input/output property keys that existing workflows reference. Node IDs must be lowercase kebab-case.
 
 ### Workflow conventions
 
@@ -416,7 +447,7 @@ Each workflow lives under `workflows/<folder>/` with six files:
 - `output.json` — workflow-level output schema
 - `triggers.json` — how the workflow is initiated (REST endpoint, cron, etc.)
 
-Plus `flow-id-to-label/<workflowId>.txt` mapping the workflow's UUID to a human-readable label.
+Plus `flow-id-to-label/<workflowId>.txt` mapping the workflow ID to a human-readable label. `create_workflow` generates a 20-character workflow ID; the UUIDs used for individual workflow nodes are separate.
 
 > Node `id` fields inside `nodes.json` are referenced for execution wiring — never change them. When upgrading a node version in a workflow, verify that inputs/outputs are compatible.
 
@@ -437,6 +468,7 @@ Plus `flow-id-to-label/<workflowId>.txt` mapping the workflow's UUID to a human-
 | `set_flow_label` / `get_flow_label` | Read or write a single `flow-id-to-label/<id>.txt` file. |
 | `validate_deployment` | Run local deployment preflight for one node, one workflow, or the whole repo: required files, supported schemas, TypeScript, references, bindings, and serialization checks. |
 | `sync_to_git` | Validate changed artifacts, stage only inspected BuildShip-managed paths, commit, and optionally push. A clean checkout can retry a previous push. |
+| `check_for_updates` | Check the latest published stable GitHub release and return version information and manual update instructions. Optional `force` bypasses the process cache. |
 
 ### Example: create a node
 
@@ -548,12 +580,13 @@ npm run dev        # tsc --watch
 npm run typecheck  # tsc --noEmit
 npm run build      # tsc → dist/index.js
 npm run check      # resolve BUILDSHIP_REPO and exit
+npm run check:updates # check published releases and print JSON
 npm test           # tsc + complete node:test suite
 npm run lint       # biome check src test scripts
 npm run format     # biome format --write src test scripts
 ```
 
-Tests use Node's built-in `node:test` runner (zero test dependencies). CI runs on every push and pull request via GitHub Actions — typecheck, lint, and test.
+Tests use Node's built-in `node:test` runner. GitHub Actions runs typecheck, lint, and tests for pushes to `main`/`master` and pull requests targeting those branches.
 
 The server is plain stdio JSON-RPC, so you can smoke-test it from a shell:
 
@@ -565,6 +598,21 @@ The server is plain stdio JSON-RPC, so you can smoke-test it from a shell:
   sleep 0.3
 ) | BUILDSHIP_REPO=/your/repo node dist/index.js
 ```
+
+---
+
+## Preparing a release
+
+The package version is the source for the CLI and MCP handshake. Prepare the next version on a branch; for the first release:
+
+```bash
+npm version 0.3.0 --no-git-tag-version
+npm run check:release -- 0.3.0
+```
+
+For later releases, substitute the next stable version. If `package.json` already contains the intended version, skip the version command. Commit the version and lockfile changes with the release notes, open a PR, and merge after review.
+
+After the PR merges, manually run the [release workflow](.github/workflows/release.yml) from `main`, supplying the exact version in `package.json`. It runs the required checks and creates a **draft GitHub Release** tagged `vVERSION` at the checked commit SHA. Review the draft and publish it separately. Preparing a version or merging its PR does not publish a release, and this workflow does not publish an npm package.
 
 ---
 

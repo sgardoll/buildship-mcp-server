@@ -1,10 +1,9 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { after, before, describe, it } from "node:test";
-import { fileURLToPath } from "node:url";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
@@ -21,7 +20,11 @@ before(async () => {
   );
   transport = new StdioClientTransport({
     command: process.execPath,
-    args: [fileURLToPath(new URL("../dist/index.js", import.meta.url))],
+    args: [
+      "--input-type=module",
+      "-e",
+      `globalThis.fetch = async () => new Response(JSON.stringify({ tag_name: "v9.0.0", draft: false, prerelease: false }), { status: 200 }); await import(${JSON.stringify(new URL("../dist/index.js", import.meta.url).href)});`,
+    ],
     env: { ...process.env, BUILDSHIP_REPO: tempRepo },
     stderr: "pipe",
   });
@@ -43,13 +46,16 @@ after(async () => {
 describe("MCP stdio protocol", { timeout: 30_000 }, () => {
   it("initializes and advertises consistent tool schemas and behavior", async () => {
     assert.equal(client.getServerVersion().name, "buildship-mcp");
+    const pkg = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
+    assert.equal(client.getServerVersion().version, pkg.version);
     assert.deepEqual(client.getServerCapabilities(), { tools: {} });
     const { tools } = await client.listTools();
     const second = await client.listTools();
     assert.deepEqual(second.tools, tools);
-    assert.equal(tools.length, 12);
+    assert.equal(tools.length, 13);
     assert.equal(new Set(tools.map((tool) => tool.name)).size, tools.length);
     const readers = new Set([
+      "check_for_updates",
       "list_nodes",
       "get_node",
       "list_workflows",
@@ -61,7 +67,11 @@ describe("MCP stdio protocol", { timeout: 30_000 }, () => {
       assert.equal(tool.inputSchema.type, "object", tool.name);
       assert.equal(tool.inputSchema.$schema, "http://json-schema.org/draft-07/schema#");
       assert.equal(tool.annotations.readOnlyHint, readers.has(tool.name), tool.name);
-      assert.equal(tool.annotations.openWorldHint, tool.name === "sync_to_git", tool.name);
+      assert.equal(
+        tool.annotations.openWorldHint,
+        ["sync_to_git", "check_for_updates"].includes(tool.name),
+        tool.name,
+      );
       if (!readers.has(tool.name)) {
         assert.equal(tool.annotations.destructiveHint, true, tool.name);
         assert.equal(tool.annotations.idempotentHint, false, tool.name);
@@ -82,6 +92,19 @@ describe("MCP stdio protocol", { timeout: 30_000 }, () => {
     assert.match(result.content[0].text, /Invalid input for get_node: id:/);
   });
 
+  it("exposes update availability through an ordinary MCP tool result", async () => {
+    const result = await client.callTool({ name: "check_for_updates", arguments: {} });
+    assert.notEqual(result.isError, true);
+    const report = JSON.parse(result.content[0].text);
+    assert.equal(report.status, "update_available");
+    assert.equal(report.latestVersion, "9.0.0");
+    assert.equal(report.updateAvailable, true);
+    assert.equal(
+      report.releaseUrl,
+      "https://github.com/sgardoll/buildship-mcp-server/releases/tag/v9.0.0",
+    );
+  });
+
   it("returns an unknown tool as a protocol error", async () => {
     await assert.rejects(client.callTool({ name: "missing_tool", arguments: {} }), (error) => {
       assert.ok(error instanceof McpError);
@@ -95,7 +118,7 @@ describe("MCP stdio protocol", { timeout: 30_000 }, () => {
     const result = await client.callTool({ name: "get_node", arguments: { id: "missing-node" } });
     assert.equal(result.isError, true);
     assert.match(result.content[0].text, /missing-node/);
-    assert.equal((await client.listTools()).tools.length, 12);
+    assert.equal((await client.listTools()).tools.length, 13);
   });
 
   it("supports a mutation that reenters the repository lock", async () => {

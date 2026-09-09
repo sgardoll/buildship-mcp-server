@@ -37,6 +37,8 @@ import {
   SetLabelSchema,
   setLabel,
 } from "./tools/workflows.js";
+import { CheckForUpdatesSchema, checkForUpdates } from "./updates.js";
+import { SERVER_VERSION } from "./version.js";
 
 interface ToolDef {
   name: string;
@@ -55,6 +57,14 @@ const LOCAL_MUTATION: ToolAnnotations = {
 };
 
 const TOOLS: ToolDef[] = [
+  {
+    name: "check_for_updates",
+    description:
+      "Check the latest public GitHub release against the installed server version. Returns update availability, release link, and manual update instructions. Results are cached; force: true refreshes them. No files are changed and network failures do not prevent other tools from running.",
+    schema: CheckForUpdatesSchema,
+    annotations: { readOnlyHint: true, openWorldHint: true },
+    handler: checkForUpdates,
+  },
   {
     name: "list_nodes",
     description:
@@ -151,6 +161,15 @@ const TOOLS: ToolDef[] = [
 ];
 
 async function main() {
+  // Informational CLI commands work without a configured BuildShip repository.
+  if (process.argv.includes("--version")) {
+    process.stdout.write(`${SERVER_VERSION}\n`);
+    return;
+  }
+  if (process.argv.includes("--check-updates")) {
+    process.stdout.write(`${JSON.stringify(await checkForUpdates({}), null, 2)}\n`);
+    return;
+  }
   // `--check` resolves the repo root, prints it, and exits — for sanity-testing
   // an install without launching a client.
   if (process.argv.includes("--check")) {
@@ -171,7 +190,7 @@ async function main() {
   });
 
   const server = new Server(
-    { name: "buildship-mcp", version: "0.2.0" },
+    { name: "buildship-mcp", version: SERVER_VERSION },
     { capabilities: { tools: {} } },
   );
 
@@ -193,7 +212,11 @@ async function main() {
     try {
       // Readers share the mutation lock so a concurrent call cannot expose
       // partially written files while a transaction is awaiting validation.
-      const result = await withRepoMutationLock(() => tool.handler(req.params.arguments ?? {}));
+      const execute = () => tool.handler(req.params.arguments ?? {});
+      // Update checks do not access repository state and should not hold up
+      // local operations while waiting for GitHub.
+      const result =
+        tool.name === "check_for_updates" ? await execute() : await withRepoMutationLock(execute);
       const pushFailed =
         tool.name === "sync_to_git" &&
         typeof result === "object" &&
