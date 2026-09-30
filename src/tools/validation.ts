@@ -483,7 +483,7 @@ function expressionNodeReferences(expression: string): string[] {
   return [...references];
 }
 
-function flattenWorkflowNodes(rawNodes: unknown[]): unknown[] {
+export function flattenWorkflowNodes(rawNodes: unknown[]): unknown[] {
   const flattened: unknown[] = [];
   const visitList = (list: unknown[]) => {
     for (const rawNode of list) {

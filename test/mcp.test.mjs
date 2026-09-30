@@ -52,7 +52,7 @@ describe("MCP stdio protocol", { timeout: 30_000 }, () => {
     const { tools } = await client.listTools();
     const second = await client.listTools();
     assert.deepEqual(second.tools, tools);
-    assert.equal(tools.length, 13);
+    assert.equal(tools.length, 15);
     assert.equal(new Set(tools.map((tool) => tool.name)).size, tools.length);
     const readers = new Set([
       "check_for_updates",
@@ -118,7 +118,7 @@ describe("MCP stdio protocol", { timeout: 30_000 }, () => {
     const result = await client.callTool({ name: "get_node", arguments: { id: "missing-node" } });
     assert.equal(result.isError, true);
     assert.match(result.content[0].text, /missing-node/);
-    assert.equal((await client.listTools()).tools.length, 13);
+    assert.equal((await client.listTools()).tools.length, 15);
   });
 
   it("supports a mutation that reenters the repository lock", async () => {

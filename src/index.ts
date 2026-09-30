@@ -34,8 +34,12 @@ import {
   getWorkflow,
   ListWorkflowsSchema,
   listWorkflows,
+  RemoveNodeFromWorkflowSchema,
+  removeNodeFromWorkflow,
   SetLabelSchema,
   setLabel,
+  UpdateWorkflowNodeSchema,
+  updateWorkflowNode,
 } from "./tools/workflows.js";
 import { CheckForUpdatesSchema, checkForUpdates } from "./updates.js";
 import { SERVER_VERSION } from "./version.js";
@@ -127,6 +131,22 @@ const TOOLS: ToolDef[] = [
     schema: AddNodeToWorkflowSchema,
     annotations: LOCAL_MUTATION,
     handler: addNodeToWorkflow,
+  },
+  {
+    name: "update_workflow_node",
+    description:
+      "Replace or merge one existing workflow node's schema.json nodeValues entry, e.g. rebinding inputs, changing a table or filter, or fixing a payload mapping. Other nodes, meta labels and the node definition are untouched. Restores prior files and reports validation failures instead of writing them.",
+    schema: UpdateWorkflowNodeSchema,
+    annotations: LOCAL_MUTATION,
+    handler: updateWorkflowNode,
+  },
+  {
+    name: "remove_node_from_workflow",
+    description:
+      "Remove a node or trigger from a workflow, pruning it from nodes.json (including nested control-node sequences), triggers.json, meta.json nodeIdToLabel and schema.json nodeValues in one validated transaction. Refuses to orphan live references unless force is true; forced removal drops the referring bindings.",
+    schema: RemoveNodeFromWorkflowSchema,
+    annotations: LOCAL_MUTATION,
+    handler: removeNodeFromWorkflow,
   },
   {
     name: "set_flow_label",
