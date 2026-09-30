@@ -143,7 +143,7 @@ const TOOLS: ToolDef[] = [
   {
     name: "remove_node_from_workflow",
     description:
-      "Remove a node from a workflow, pruning it from nodes.json, meta.json nodeIdToLabel and schema.json nodeValues in one validated transaction. Refuses to orphan live references unless force is true.",
+      "Remove a node or trigger from a workflow, pruning it from nodes.json (including nested control-node sequences), triggers.json, meta.json nodeIdToLabel and schema.json nodeValues in one validated transaction. Refuses to orphan live references unless force is true; forced removal drops the referring bindings.",
     schema: RemoveNodeFromWorkflowSchema,
     annotations: LOCAL_MUTATION,
     handler: removeNodeFromWorkflow,

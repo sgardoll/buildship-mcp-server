@@ -466,7 +466,7 @@ Plus `flow-id-to-label/<workflowId>.txt` mapping the workflow ID to a human-read
 | `create_workflow` | Create a transactionally validated workflow with a complete REST v2 trigger, fully materialized nodes, one Flow Output node, and its label mapping. |
 | `add_node_to_workflow` | Materialize a complete custom/control node and atomically update `nodes.json`, `meta.json`, and `schema.json`. |
 | `update_workflow_node` | Replace or merge one existing node's `schema.json` `nodeValues` entry — rebind inputs, change a table or filter, fix a payload mapping. Other nodes and the node definition are untouched. |
-| `remove_node_from_workflow` | Remove a node from `nodes.json`, `meta.json`, and `schema.json` in one validated transaction. Refuses to orphan a live reference unless `force` is set. |
+| `remove_node_from_workflow` | Remove a node or trigger from `nodes.json` (including nested control-node sequences), `triggers.json`, `meta.json`, and `schema.json` in one validated transaction. Refuses to orphan a live reference unless `force` is set, which drops the referring bindings. |
 | `set_flow_label` / `get_flow_label` | Read or write a single `flow-id-to-label/<id>.txt` file. |
 | `validate_deployment` | Run local deployment preflight for one node, one workflow, or the whole repo: required files, supported schemas, TypeScript, references, bindings, and serialization checks. |
 | `sync_to_git` | Validate changed artifacts, stage only inspected BuildShip-managed paths, commit, and optionally push. A clean checkout can retry a previous push. |

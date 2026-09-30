@@ -531,3 +531,181 @@ describe("Workflow node update and removal", () => {
     );
   });
 });
+
+describe("Workflow node removal — subtrees, triggers, and pruning", () => {
+  const folder = "removal-fixture-X1Y2";
+  const producerId = "aaaaaaaa-1111-4111-8111-111111111111";
+  const consumerId = "bbbbbbbb-2222-4222-8222-222222222222";
+  const branchId = "cccccccc-3333-4333-8333-333333333333";
+  const nestedAId = "dddddddd-4444-4444-8444-444444444444";
+  const nestedBId = "eeeeeeee-5555-4555-8555-555555555555";
+  let workflowDir;
+  let triggerId;
+  let readSchema;
+
+  before(async () => {
+    await createNode({
+      id: "remove-producer",
+      label: "Remove Producer",
+      output: { type: "object", properties: { result: { type: "string" } } },
+      mainTs:
+        'export default async function (): Promise<NodeOutput> {\n  return { result: "ok" };\n}\n',
+    });
+    await createNode({
+      id: "remove-consumer",
+      label: "Remove Consumer",
+      inputs: { word: { type: "string" } },
+      output: { type: "object", properties: {} },
+      mainTs:
+        'export default async function ({ word }: NodeInputs): Promise<NodeOutput> {\n  return { word: word ?? "" };\n}\n',
+    });
+    const created = await createWorkflow({
+      name: "removal fixture",
+      folderName: folder,
+      nodes: [
+        { id: producerId, nodeId: "remove-producer" },
+        {
+          id: consumerId,
+          nodeId: "remove-consumer",
+          values: {
+            word: { _$keys_: [producerId, "result"] },
+            note: "keep-me",
+            retries: 3,
+            optional: null,
+          },
+        },
+        {
+          id: branchId,
+          type: "branch",
+          label: "Gate",
+          definition: {
+            label: "Gate",
+            condition: true,
+            // biome-ignore lint/suspicious/noThenProperty: BuildShip branch schema requires `then`
+            then: [
+              { id: nestedAId, type: "output", label: "Nested A" },
+              { id: nestedBId, type: "output", label: "Nested B" },
+            ],
+            else: [],
+          },
+          nestedValues: {
+            [nestedAId]: { _$bsStatusCode_: "200" },
+            [nestedBId]: { _$bsStatusCode_: "200" },
+          },
+        },
+      ],
+    });
+    triggerId = created.triggerId;
+    workflowDir = path.join(tempRepo, "workflows", folder);
+    readSchema = async () =>
+      JSON.parse(await readFile(path.join(workflowDir, "schema.json"), "utf8"));
+  });
+
+  it("refuses to remove a node still referenced and writes nothing", async () => {
+    const before = await readFile(path.join(workflowDir, "schema.json"), "utf8");
+    await assert.rejects(
+      removeNodeFromWorkflow({ folder, nodeId: producerId }),
+      new RegExp(`still referenced by ${consumerId}`),
+    );
+    assert.equal(await readFile(path.join(workflowDir, "schema.json"), "utf8"), before);
+  });
+
+  it("rejects nestedValues keys that name nodes outside the target subtree", async () => {
+    await assert.rejects(
+      updateWorkflowNode({
+        folder,
+        nodeId: branchId,
+        values: {},
+        nestedValues: { [consumerId]: { note: "sibling" } },
+      }),
+      /not nested inside/,
+    );
+  });
+
+  it("applies nestedValues to a node nested inside the target", async () => {
+    await updateWorkflowNode({
+      folder,
+      nodeId: branchId,
+      values: {},
+      nestedValues: { [nestedAId]: { gateKey: "gate-value" } },
+    });
+    const schema = await readSchema();
+    assert.equal(schema.nodeValues[nestedAId].gateKey, "gate-value");
+  });
+
+  it("refuses to remove a subtree while an outsider references a nested member", async () => {
+    await updateWorkflowNode({
+      folder,
+      nodeId: consumerId,
+      values: { gateOut: { _$keys_: [nestedAId, "result"] } },
+    });
+    await assert.rejects(
+      removeNodeFromWorkflow({ folder, nodeId: branchId }),
+      new RegExp(`still referenced by ${consumerId}`),
+    );
+    await updateWorkflowNode({ folder, nodeId: consumerId, values: { gateOut: null } });
+  });
+
+  it("forced removal drops only the dangling binding and keeps literal settings", async () => {
+    const result = await removeNodeFromWorkflow({ folder, nodeId: producerId, force: true });
+    assert.equal(result.removedId, producerId);
+    assert.deepEqual(result.removedIds, [producerId]);
+    assert.deepEqual(result.prunedReferences, [consumerId]);
+
+    const schema = await readSchema();
+    const consumerValues = schema.nodeValues[consumerId];
+    assert.equal(consumerValues.word, undefined, "binding to the removed node is dropped");
+    assert.equal(consumerValues.note, "keep-me", "literal string survives");
+    assert.equal(consumerValues.retries, 3, "literal number survives");
+    assert.equal("optional" in consumerValues, true, "literal null survives");
+    assert.ok(schema.nodeValues[triggerId], "trigger values survive a node removal");
+  });
+
+  it("removes a nested node from a control-node sequence", async () => {
+    const result = await removeNodeFromWorkflow({ folder, nodeId: nestedBId });
+    assert.deepEqual(result.removedIds, [nestedBId]);
+
+    const nodes = JSON.parse(await readFile(path.join(workflowDir, "nodes.json"), "utf8"));
+    const branch = nodes.find((node) => node.id === branchId);
+    assert.deepEqual(
+      branch.then.map((node) => node.id),
+      [nestedAId],
+      "nested definition is pruned from `then`",
+    );
+    const schema = await readSchema();
+    const meta = JSON.parse(await readFile(path.join(workflowDir, "meta.json"), "utf8"));
+    assert.equal(nestedBId in schema.nodeValues, false);
+    assert.equal(nestedBId in meta.nodeIdToLabel, false);
+    assert.equal(nestedAId in schema.nodeValues, true, "sibling nested node survives");
+  });
+
+  it("removing a control node removes its subtree's values and labels", async () => {
+    const result = await removeNodeFromWorkflow({ folder, nodeId: branchId });
+    assert.ok(result.removedIds.includes(branchId));
+    assert.ok(result.removedIds.includes(nestedAId));
+
+    const nodes = JSON.parse(await readFile(path.join(workflowDir, "nodes.json"), "utf8"));
+    assert.equal(
+      nodes.some((node) => node.id === branchId),
+      false,
+    );
+    const schema = await readSchema();
+    const meta = JSON.parse(await readFile(path.join(workflowDir, "meta.json"), "utf8"));
+    assert.equal(branchId in schema.nodeValues, false);
+    assert.equal(nestedAId in schema.nodeValues, false, "nested child's values go with it");
+    assert.equal(branchId in meta.nodeIdToLabel, false);
+    assert.equal(nestedAId in meta.nodeIdToLabel, false, "nested child's label goes with it");
+  });
+
+  it("removes a trigger from triggers.json along with its values and label", async () => {
+    const result = await removeNodeFromWorkflow({ folder, nodeId: triggerId });
+    assert.equal(result.removedId, triggerId);
+
+    const triggers = JSON.parse(await readFile(path.join(workflowDir, "triggers.json"), "utf8"));
+    assert.equal(triggers.length, 0);
+    const schema = await readSchema();
+    const meta = JSON.parse(await readFile(path.join(workflowDir, "meta.json"), "utf8"));
+    assert.equal(triggerId in schema.nodeValues, false);
+    assert.equal(triggerId in meta.nodeIdToLabel, false);
+  });
+});
