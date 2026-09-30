@@ -15,7 +15,14 @@ import {
   writeText,
 } from "../repo.js";
 import { buildRestTrigger } from "../restTrigger.js";
-import { assertDeploymentValid, validateNode, validateWorkflow } from "./validation.js";
+import {
+  assertDeploymentValid,
+  flattenWorkflowNodes,
+  validateNode,
+  validateWorkflow,
+} from "./validation.js";
+
+type JsonObject = Record<string, unknown>;
 
 const SEMVER_RE = /^\d+\.\d+\.\d+$/;
 const NODE_ID_RE = /^[a-z0-9][a-z0-9-]*$/;
@@ -469,6 +476,261 @@ async function addNodeToWorkflowUnlocked(raw: unknown) {
   );
 
   return { folder, addedId: id, totalNodes: nodes.length };
+}
+
+export const UpdateWorkflowNodeSchema = z.object({
+  folder: z.string().regex(WORKFLOW_FOLDER_RE),
+  nodeId: z.string().uuid(),
+  values: z
+    .record(z.string(), z.unknown())
+    .describe(
+      "Replacement entry for schema.json nodeValues[nodeId]. Merged over the existing entry's top-level keys; a key set to null removes that key. Does not alter nodes.json, meta.json, or any nested node.",
+    ),
+  nestedValues: z
+    .record(z.string().uuid(), z.record(z.string(), z.unknown()))
+    .default({})
+    .describe("Replacements for schema.nodeValues entries of nodes nested inside this node."),
+});
+
+export async function updateWorkflowNode(raw: unknown) {
+  return withRepoMutationLock(() => updateWorkflowNodeUnlocked(raw));
+}
+
+async function updateWorkflowNodeUnlocked(raw: unknown) {
+  const { folder, nodeId, values, nestedValues } = UpdateWorkflowNodeSchema.parse(raw);
+  const root = await workflowsDir();
+  const dir = safeJoin(root, folder);
+  if (!(await pathExists(dir))) {
+    throw new Error(`Workflow not found: ${folder}`);
+  }
+
+  const schemaPath = path.join(dir, "schema.json");
+  const schema = await readJson<Record<string, unknown>>(schemaPath);
+  const existingValues = isPlainObject(schema.nodeValues) ? schema.nodeValues : {};
+  if (!(nodeId in existingValues)) {
+    throw new Error(
+      `Node ${nodeId} has no schema.json nodeValues entry in ${folder}. Use add_node_to_workflow first.`,
+    );
+  }
+
+  const current = isPlainObject(existingValues[nodeId])
+    ? (existingValues[nodeId] as JsonObject)
+    : {};
+  const merged: Record<string, unknown> = { ...current };
+  for (const [key, value] of Object.entries(values)) {
+    if (value === null) {
+      delete merged[key];
+    } else {
+      merged[key] = value;
+    }
+  }
+
+  const next: Record<string, unknown> = { ...existingValues, [nodeId]: merged };
+  for (const [nestedId, nestedEntry] of Object.entries(nestedValues)) {
+    if (!(nestedId in existingValues)) {
+      throw new Error(
+        `Node ${nestedId} referenced by nestedValues has no schema.json nodeValues entry in ${folder}.`,
+      );
+    }
+    const nestedCurrent = isPlainObject(existingValues[nestedId])
+      ? (existingValues[nestedId] as JsonObject)
+      : {};
+    next[nestedId] = { ...nestedCurrent, ...nestedEntry };
+  }
+  schema.nodeValues = next;
+
+  await writeFilesTransaction([{ file: schemaPath, content: jsonContent(schema) }], async () =>
+    assertDeploymentValid(await validateWorkflow(folder)),
+  );
+
+  return { folder, nodeId, updatedKeys: Object.keys(values), totalNodes: Object.keys(next).length };
+}
+
+export const RemoveNodeFromWorkflowSchema = z.object({
+  folder: z.string().regex(WORKFLOW_FOLDER_RE),
+  nodeId: z.string().uuid(),
+  force: z
+    .boolean()
+    .default(false)
+    .describe("Remove even when other nodes or bindings still reference this node id."),
+});
+
+export async function removeNodeFromWorkflow(raw: unknown) {
+  return withRepoMutationLock(() => removeNodeFromWorkflowUnlocked(raw));
+}
+
+async function removeNodeFromWorkflowUnlocked(raw: unknown) {
+  const { folder, nodeId, force } = RemoveNodeFromWorkflowSchema.parse(raw);
+  const root = await workflowsDir();
+  const dir = safeJoin(root, folder);
+  if (!(await pathExists(dir))) {
+    throw new Error(`Workflow not found: ${folder}`);
+  }
+
+  const nodesPath = path.join(dir, "nodes.json");
+  const metaPath = path.join(dir, "meta.json");
+  const schemaPath = path.join(dir, "schema.json");
+  const [nodes, meta, schema] = await Promise.all([
+    readJson<Array<Record<string, unknown>>>(nodesPath),
+    readJson<Record<string, unknown>>(metaPath),
+    readJson<Record<string, unknown>>(schemaPath),
+  ]);
+  if (!Array.isArray(nodes)) throw new Error(`${nodesPath} must contain a JSON array.`);
+
+  const known = new Set([
+    ...nodes.map((n) => n.id).filter((id): id is string => typeof id === "string"),
+    ...(isPlainObject(schema.nodeValues) ? Object.keys(schema.nodeValues) : []),
+  ]);
+  if (!known.has(nodeId)) {
+    throw new Error(`Node ${nodeId} is not present in workflow ${folder}.`);
+  }
+
+  const referrers = collectNodeReferences(nodes, schema, nodeId);
+  if (referrers.length > 0 && !force) {
+    throw new Error(
+      `Node ${nodeId} is still referenced by ${referrers.join(", ")}. Remove those references first, or pass force: true to remove it anyway.`,
+    );
+  }
+
+  const referrerSet = new Set(referrers);
+  // Forcing a removal would otherwise leave bindings pointing at an id that no
+  // longer exists, which the validator rejects. Drop them so the workflow stays
+  // internally consistent.
+  const remaining = nodes
+    .filter((n) => n.id !== nodeId)
+    .map((n) => pruneReferences(n, referrerSet) as Record<string, unknown>);
+  const remainingIds = new Set(
+    remaining.map((n) => n.id).filter((id): id is string => typeof id === "string"),
+  );
+  const existingValues = isPlainObject(schema.nodeValues) ? schema.nodeValues : {};
+  const nextValues: Record<string, unknown> = force
+    ? Object.fromEntries(
+        Object.entries(existingValues).map(([destinationId, entry]) => [
+          destinationId,
+          pruneReferences(entry, referrerSet),
+        ]),
+      )
+    : { ...existingValues };
+  delete nextValues[nodeId];
+  const survivingIds = new Set(workflowNodeEntries(remaining).map((n) => n.id));
+  for (const id of Object.keys(nextValues)) {
+    if (!remainingIds.has(id) && !survivingIds.has(id)) {
+      delete nextValues[id];
+    }
+  }
+  schema.nodeValues = nextValues;
+
+  const labels = isPlainObject(meta.nodeIdToLabel)
+    ? { ...(meta.nodeIdToLabel as Record<string, string>) }
+    : {};
+  delete labels[nodeId];
+  meta.nodeIdToLabel = labels;
+
+  await writeFilesTransaction(
+    [
+      { file: nodesPath, content: jsonContent(remaining) },
+      { file: metaPath, content: jsonContent(meta) },
+      { file: schemaPath, content: jsonContent(schema) },
+    ],
+    async () => assertDeploymentValid(await validateWorkflow(folder)),
+  );
+
+  return {
+    folder,
+    removedId: nodeId,
+    prunedReferences: force ? referrers : [],
+    totalNodes: remaining.length,
+  };
+}
+
+function isPlainObject(value: unknown): value is JsonObject {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Remove bindings that pointed at `dropped` from a node's inputs/output or a
+ * schema.nodeValues entry. Only recurses into binding-shaped objects, so node
+ * identity fields (id, type, label) are never touched.
+ */
+function pruneReferences(value: unknown, dropped: Set<string>): JsonObject | unknown[] | null {
+  // Nothing to prune: keep the value as-is when it is a container we can return,
+  // and drop primitives, which cannot hold a binding.
+  if (dropped.size === 0) {
+    if (Array.isArray(value) || isPlainObject(value)) return value;
+    return null;
+  }
+  if (Array.isArray(value)) {
+    const items = value
+      .map((item) => pruneReferences(item, dropped))
+      .filter((item) => item !== null);
+    // An emptied binding container is not a valid binding; drop it too.
+    return items.length === 0 ? null : items;
+  }
+  if (!isPlainObject(value)) return null;
+  const keys = value._$keys_;
+  if (Array.isArray(keys) && typeof keys[0] === "string" && dropped.has(keys[0])) return null;
+  // An expression that reads the removed node is just as dangling as a key binding.
+  if (typeof value._$expression_ === "string") {
+    for (const id of dropped) {
+      if (value._$expression_.includes(id)) return null;
+    }
+  }
+  // A node definition is not a binding container: keep it intact.
+  if (typeof value.id === "string" && typeof value.type === "string") return value;
+  const out: Record<string, unknown> = {};
+  for (const [key, nested] of Object.entries(value)) {
+    const pruned = pruneReferences(nested, dropped);
+    if (pruned === null) continue;
+    out[key] = pruned;
+  }
+  // An emptied binding is not a valid binding; drop it rather than write "{}".
+  const isBinding = "_$keys_" in value || "_$expression_" in value;
+  if (isBinding && Object.keys(out).length === 0) return null;
+  return out;
+}
+
+/** `flattenWorkflowNodes` walks nested control-node sequences; narrow each entry to an object. */
+function workflowNodeEntries(nodes: unknown[]): JsonObject[] {
+  return flattenWorkflowNodes(nodes).filter(isPlainObject);
+}
+
+/** Every node id referenced by a node's own definition, bindings, or nested sequences. */
+function collectNodeReferences(
+  nodes: Array<Record<string, unknown>>,
+  schema: Record<string, unknown>,
+  targetId: string,
+): string[] {
+  const found = new Set<string>();
+  // `referrer` is the node whose entry is being walked; a hit means that node
+  // depends on `targetId`, which is what removal would orphan.
+  const visitBinding = (referrer: string, value: unknown): void => {
+    if (Array.isArray(value)) {
+      for (const item of value) visitBinding(referrer, item);
+      return;
+    }
+    if (!isPlainObject(value)) return;
+    const keys = value._$keys_;
+    if (Array.isArray(keys) && typeof keys[0] === "string" && keys[0] === targetId) {
+      found.add(referrer);
+    }
+    const expression = value._$expression_;
+    if (typeof expression === "string" && expression.includes(targetId)) {
+      found.add(referrer);
+    }
+    for (const nested of Object.values(value)) visitBinding(referrer, nested);
+  };
+  for (const node of workflowNodeEntries(nodes)) {
+    if (typeof node.id === "string" && node.id !== targetId) {
+      visitBinding(node.id, node.inputs);
+      visitBinding(node.id, node.output);
+    }
+  }
+  for (const [destinationId, entry] of Object.entries(
+    isPlainObject(schema.nodeValues) ? schema.nodeValues : {},
+  )) {
+    if (destinationId !== targetId) visitBinding(destinationId, entry);
+  }
+  return [...found].filter((id) => id !== targetId);
 }
 
 export const SetLabelSchema = z.object({
